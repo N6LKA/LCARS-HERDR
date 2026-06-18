@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LCARS — Claude Interface</title>
+  <link rel="stylesheet" href="/static/lcars.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header bar -->
+    <header class="lcars-header">
+      <div class="lcars-elbow-left"></div>
+      <div class="lcars-header-title">
+        <span class="lcars-subtitle">STARFLEET COMMAND</span>
+        <span class="lcars-title">CLAUDE INTERFACE</span>
+      </div>
+      <div class="lcars-header-status">
+        <span id="status-servers" class="lcars-status-item">—</span>
+        <span id="status-tools" class="lcars-status-item">—</span>
+      </div>
+      <div class="lcars-elbow-right"></div>
+    </header>
+
+    <div class="lcars-body">
+      <!-- Left sidebar -->
+      <aside class="lcars-sidebar">
+        <div class="lcars-sidebar-top"></div>
+
+        <div class="lcars-sidebar-content">
+          <button class="lcars-btn lcars-btn-new" id="btn-new-chat" onclick="newConversation()">
+            NEW SESSION
+          </button>
+
+          <div class="lcars-section-label">SESSIONS</div>
+          <div id="conversation-list" class="lcars-conv-list"></div>
+        </div>
+
+        <div class="lcars-sidebar-spacer"></div>
+        <div class="lcars-sidebar-block lcars-block-purple"></div>
+        <div class="lcars-sidebar-block lcars-block-blue"></div>
+        <div class="lcars-sidebar-block lcars-block-orange"></div>
+      </aside>
+
+      <!-- Main chat area -->
+      <main class="lcars-main">
+        <div id="messages" class="lcars-messages"></div>
+
+        <!-- Thinking indicator -->
+        <div id="thinking-bar" class="lcars-thinking-bar" style="display:none">
+          <span class="lcars-thinking-label">PROCESSING</span>
+          <div class="lcars-thinking-dots"><span></span><span></span><span></span></div>
+          <span id="thinking-tool" class="lcars-thinking-tool"></span>
+        </div>
+
+        <!-- Image previews -->
+        <div id="image-tray" class="lcars-image-tray" style="display:none"></div>
+
+        <!-- Input area -->
+        <div class="lcars-input-area">
+          <div class="lcars-input-left"></div>
+          <div class="lcars-input-wrapper">
+            <textarea
+              id="message-input"
+              class="lcars-textarea"
+              placeholder="ENTER MESSAGE — Alt+Enter for new line — Ctrl+V to paste image"
+              rows="3"
+            ></textarea>
+          </div>
+          <button class="lcars-send-btn" id="send-btn" onclick="sendMessage()">
+            TRANSMIT
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <!-- Footer bar -->
+    <footer class="lcars-footer">
+      <div class="lcars-footer-left"></div>
+      <div class="lcars-footer-text">
+        N6LKA HOMELAB — LCARS CLAUDE INTERFACE v1.0
+      </div>
+      <div class="lcars-footer-right"></div>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
