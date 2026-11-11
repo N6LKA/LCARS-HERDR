@@ -41,6 +41,14 @@ function stateOf(t) {
   if (t.state && t.state !== 'live') return 'ended';
   return (t.status && t.status.state) || 'live';
 }
+const isAgent = t => !!(t.status && t.status.app) || (t.labels && t.labels.kind === 'claude');
+const ORDER = { blocked: 0, working: 1, done: 2, idle: 3, live: 4, ended: 5 };
+const TRICORDER = '<span class="tri"><i></i><i></i><i></i><i></i></span>';
+function ageOf(t) {
+  const ms = Date.now() - (t.status_ms || t.created_ms || Date.now());
+  const m = Math.floor(ms / 60000);
+  return m < 1 ? '<1M' : m < 60 ? `${m}M` : m < 1440 ? `${Math.floor(m / 60)}H` : `${Math.floor(m / 1440)}D`;
+}
 const labelOf = t => t.name || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
 const wsActive = () => S.ws.find(w => w.id === S.active) || S.ws[0];
 
@@ -152,7 +160,7 @@ class Pane {
     this.addr = addr; this.ws = null; this.dead = false; this.retry = 0;
     this.el = document.createElement('div');
     this.el.className = 'pane';
-    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span><span class="st"></span>
+    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span>${TRICORDER}<span class="st"></span>
       <button data-a="zoom" title="Fill the workspace">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
       <button data-a="close" class="close" title="Remove from this workspace (keeps running)">✕</button></div>
       <div class="pane-b"><span class="pane-msg">RECONNECTING</span></div>`;
@@ -240,6 +248,7 @@ class Pane {
     const t = S.terms.get(this.addr), st = t ? stateOf(t) : 'ended';
     this.el.style.setProperty('--c', STATUS_COLOR[st]);
     this.el.classList.toggle('blocked', st === 'blocked');
+    this.el.dataset.state = st;
     $('.title', this.el).textContent = t ? `${labelOf(t)} · ${this.addr}${t.cwd ? ' · ' + t.cwd : ''}` : this.addr;
     $('.st', this.el).textContent = STATUS_WORD[st];
     $('[data-a=zoom]', this.el).textContent = S.zoom === this.addr ? 'RESTORE' : 'ZOOM';
@@ -259,7 +268,7 @@ function setFocus(addr) {
 
 // ── rendering ─────────────────────────────────────────────────────────
 function render() {
-  renderTabs(); renderTerms(); renderPanes(); renderFoot();
+  renderTabs(); renderTerms(); renderAgents(); renderPanes(); renderFoot();
 }
 function renderTabs() {
   const box = $('#tabs'); box.textContent = '';
@@ -283,7 +292,7 @@ function renderTabs() {
 function renderTerms() {
   const box = $('#terms'); box.textContent = '';
   const inWs = new Set(wsActive().panes);
-  const list = [...S.terms.values()].sort((a, b) => a.created_ms - b.created_ms);
+  const list = [...S.terms.values()].filter(t => !isAgent(t)).sort((a, b) => a.created_ms - b.created_ms);
   for (const t of list) {
     const st = stateOf(t);
     const row = document.createElement('div');
@@ -297,7 +306,35 @@ function renderTerms() {
     $('.kill', row).onclick = () => killTerminal(t.address);
     box.appendChild(row);
   }
-  if (!list.length) box.innerHTML = '<div class="rail-title" style="color:#9a8aa8">NONE RUNNING</div>';
+  if (!list.length) box.innerHTML = '<div class="rail-title" style="color:#9a8aa8">NO PLAIN TERMINALS</div>';
+}
+function renderAgents() {
+  const box = $('#agents'); box.textContent = '';
+  const inWs = new Set(wsActive().panes);
+  const list = [...S.terms.values()].filter(isAgent)
+    .sort((a, b) => (ORDER[stateOf(a)] - ORDER[stateOf(b)]) || (a.created_ms - b.created_ms));
+  const n = s => list.filter(t => stateOf(t) === s).length;
+  $('#agents-title').textContent = list.length ? `AGENTS · ${n('working')} WORKING${n('blocked') ? ` · ${n('blocked')} NEED YOU` : ''}` : 'AGENTS';
+  for (const t of list) {
+    const st = stateOf(t);
+    const row = document.createElement('div');
+    row.className = 'agent' + (inWs.has(t.address) ? ' in' : '');
+    row.dataset.state = st;
+    row.style.setProperty('--c', STATUS_COLOR[st]);
+    row.innerHTML = '<span class="blk"></span>' + TRICORDER + '<button class="nm"></button><button class="kill" title="End this agent">⏻</button>';
+    $('.blk', row).textContent = STATUS_WORD[st];
+    $('.nm', row).innerHTML = '<span></span><small></small>';
+    $('.nm span', row).textContent = labelOf(t);
+    $('.nm small', row).textContent = `${(t.cwd || '').split('/').pop() || '/'} · ${ageOf(t)}`;
+    $('.nm', row).onclick = () => {
+      if (inWs.has(t.address)) { setFocus(t.address); const p = P.get(t.address); if (p) p.term.focus(); }
+      else addPane(t.address);
+      document.body.classList.remove('side-open');
+    };
+    $('.kill', row).onclick = () => killTerminal(t.address);
+    box.appendChild(row);
+  }
+  if (!list.length) box.innerHTML = '<div class="rail-title" style="color:#9a8aa8">NO AGENTS</div>';
 }
 function renderPanes() {
   const w = wsActive();
@@ -361,6 +398,7 @@ function init() {
     const dlg = ev.target;
     if (dlg.returnValue === 'ok') createSession(dlg.dataset.kind, $('#new-name').value.trim(), $('#new-cwd').value.trim());
   });
+  setInterval(renderAgents, 30000);
   setInterval(() => { $('#f-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
   // Paste of an image anywhere on the page goes to the focused terminal.
   document.addEventListener('paste', ev => {
