@@ -373,6 +373,7 @@ const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
 
 def('app.palette', 'Command palette', () => openPalette(), 'App');
 def('app.help', 'Keyboard shortcuts', () => openHelp(), 'App');
+def('app.install', 'Install LCARS Claude as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
 def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font + 1); applyFont(); }, 'App');
 def('app.zoom_out', 'Smaller terminal text', () => { S.font = Math.max(9, S.font - 1); applyFont(); }, 'App');
@@ -921,8 +922,24 @@ function init() {
   window.addEventListener('resize', () => P.forEach(p => p.refit()));
 }
 
+let installEvt = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function showInstall() { $('#install-btn').hidden = !installEvt || isInstalled(); }
+async function installApp() {
+  if (isInstalled()) return toast('ALREADY RUNNING AS AN APP');
+  if (!installEvt) return toast('Use the install icon in the browser address bar, or its menu: Cast, save and share > Install page as app', true);
+  installEvt.prompt();
+  const choice = await installEvt.userChoice.catch(() => null);
+  if (choice && choice.outcome === 'accepted') toast('INSTALLING…');
+  installEvt = null; showInstall();
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; showInstall(); });
+window.addEventListener('appinstalled', () => { installEvt = null; showInstall(); toast('INSTALLED'); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+
 (async function main() {
   init();
+  $('#install-btn').onclick = installApp;
   await loadLayout();
   // Learn which terminals still exist before drawing, so a pane is never opened on a dead one.
   try { await refreshTerms(); } catch (e) { toast(e.message, true); render(); }
