@@ -237,6 +237,18 @@ async def remove_terminal(terminal: str):
     return await rpc("terminal.rm", {"terminal": terminal})
 
 
+class TitleBody(BaseModel):
+    terminal: str
+    title: str = ""
+
+
+@app.post("/api/terminals/title")
+async def set_title(body: TitleBody):
+    """A display name kept as a label in the core, so every browser shows it. Empty clears it."""
+    title = body.title.strip()[:40]
+    return await rpc("terminal.label", {"terminal": body.terminal, "labels": {"title": title}})
+
+
 class SendBody(BaseModel):
     terminal: str
     text: str

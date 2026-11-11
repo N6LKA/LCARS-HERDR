@@ -55,7 +55,7 @@ function toast(msg, err = false) {
 const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : ((t.status && t.status.state) || 'live');
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
 const agentById = id => S.agents.find(a => a.id === id);
-const labelOf = t => t.name || (t.labels && t.labels.agent && (agentById(t.labels.agent) || {}).name) || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
+const labelOf = t => (t.labels && t.labels.title) || t.name || (t.labels && t.labels.agent && (agentById(t.labels.agent) || {}).name) || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
 const folderOf = t => (((t.foreground && t.foreground.cwd) || t.cwd || '').split('/').filter(Boolean).pop()) || '/';
 const cwdOf = addr => { const t = S.terms.get(addr); return t ? ((t.foreground && t.foreground.cwd) || t.cwd) : undefined; };
 function ageOf(t) {
@@ -90,7 +90,9 @@ function removeLeaf(n, addr) {
   const c = [], w = [];
   n.c.forEach((x, i) => { const r = removeLeaf(x, addr); if (r) { c.push(r); w.push(n.w[i]); } });
   if (!c.length) return null;
-  return c.length === 1 ? c[0] : { ...n, c, w };
+  if (c.length === 1) return c[0];
+  const sum = w.reduce((a, b) => a + b, 0);
+  return { ...n, c, w: w.map(x => x * c.length / sum) };
 }
 function swapLeaves(n, a, b) {
   if (isLeaf(n)) return n.a === a ? leaf(b) : n.a === b ? leaf(a) : n;
@@ -320,6 +322,13 @@ async function renameTab(id) {
   const v = await ask('RENAME TAB', tab.name || tabName(tab, sp.tabs.indexOf(tab)), 'empty restores the automatic name');
   if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
 }
+async function renameTerminal(addr) {
+  addr = addr || S.focus; const t = addr && S.terms.get(addr); if (!t) return;
+  const v = await ask('RENAME THIS PANE', (t.labels && t.labels.title) || '', 'empty goes back to the automatic name');
+  if (v === null) return;
+  try { const r = await post('/api/terminals/title', { terminal: addr, title: v }); S.terms.set(addr, { ...t, labels: r.labels || t.labels }); render(); }
+  catch (e) { toast(e.message, true); }
+}
 async function renameSpace(id) {
   const sp = S.spaces.find(s => s.id === (id || S.active)); if (!sp) return;
   const v = await ask('RENAME SPACE', sp.name || spaceName(sp, S.spaces.indexOf(sp)), 'empty restores the automatic name');
@@ -404,6 +413,7 @@ def('pane.split_right', 'Split right', a => splitPane(typeof a === 'string' ? a 
 def('pane.split_down', 'Split down', a => splitPane(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
 def('pane.split_right_claude', 'Split right with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'right', 'claude'), 'Panes');
 def('pane.split_down_claude', 'Split down with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'down', 'claude'), 'Panes');
+def('pane.rename', 'Rename pane', a => renameTerminal(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.zoom', 'Zoom pane or show all panes', a => toggleZoom(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.close', 'Close pane (ends its terminal)', a => closePane(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.hide', 'Hide pane (keeps running)', a => hidePane(typeof a === 'string' ? a : undefined), 'Panes');
@@ -430,7 +440,7 @@ for (let n = 1; n <= 9; n++) {
  ['ctrl+shift+b', 'layout.toggle_sidebar'], ['ctrl+shift+n', 'space.new'], ['ctrl+alt+n', 'space.new'],
  ['ctrl+shift+t', 'tab.new'], ['ctrl+alt+t', 'tab.new'], ['ctrl+shift+w', 'tab.close'], ['ctrl+alt+w', 'tab.close'],
  ['ctrl+shift+p', 'app.palette'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
- ['ctrl+shift+x', 'pane.close'], ['ctrl+shift+z', 'pane.zoom'], ['f2', 'tab.rename'], ['shift+f2', 'space.rename'], ['ctrl+shift+c', 'terminal.copy'],
+ ['ctrl+shift+x', 'pane.close'], ['ctrl+shift+z', 'pane.zoom'], ['f2', 'tab.rename'], ['ctrl+alt+r', 'pane.rename'], ['shift+f2', 'space.rename'], ['ctrl+shift+c', 'terminal.copy'],
 ].forEach(([k, c]) => bind(k, c));
 const KEYNAME = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', PageUp: 'pageup', PageDown: 'pagedown', Tab: 'tab', Escape: 'esc', Enter: 'enter', ' ': 'space',
   '-': 'minus', '+': 'plus', '=': 'equal', '[': 'lbracket', ']': 'rbracket', '/': 'slash', '?': 'question', ',': 'comma', F1: 'f1', F2: 'f2' };
@@ -504,7 +514,8 @@ function paneMenu(e, addr) {
     { label: 'Copy', cmd: 'terminal.copy', off: !sel }, { label: 'Paste', cmd: 'terminal.paste' }, '-',
     { label: 'Split right', cmd: 'pane.split_right', arg: addr }, { label: 'Split down', cmd: 'pane.split_down', arg: addr },
     { label: 'Split right with Claude', cmd: 'pane.split_right_claude', arg: addr }, { label: 'Split down with Claude', cmd: 'pane.split_down_claude', arg: addr },
-    { label: S.zoomed[(curTab() || {}).id] === addr ? 'Show all panes' : 'Zoom', cmd: 'pane.zoom', arg: addr }, '-',
+    { label: S.zoomed[(curTab() || {}).id] === addr ? 'Show all panes' : 'Zoom', cmd: 'pane.zoom', arg: addr },
+    { label: 'Rename', cmd: 'pane.rename', arg: addr }, '-',
     { label: 'Hide pane (keeps running)', cmd: 'pane.hide', arg: addr }, { label: 'Close pane', cmd: 'pane.close', arg: addr },
   ]);
 }
@@ -683,6 +694,7 @@ class Pane {
     this.el.addEventListener('mousedown', () => setFocusQuiet(addr), true);
     this.el.addEventListener('focusin', () => setFocusQuiet(addr));
     this.el.addEventListener('contextmenu', ev => paneMenu(ev, addr));
+    $('.title', this.el).addEventListener('dblclick', () => renameTerminal(addr));
     $('.pane-h', this.el).addEventListener('pointerdown', ev => { if (ev.target.closest('.cap, .title')) beginPaneDrag(addr, ev); });
     this.el.addEventListener('click', ev => {
       const a = ev.target.dataset && ev.target.dataset.a; if (!a) return;
@@ -822,6 +834,7 @@ function renderAgents() {
     $('.nm span', row).textContent = labelOf(t);
     $('.nm small', row).textContent = `${folderOf(t)} · ${ageOf(t)}`;
     $('.nm', row).onclick = () => { focusAddr(t.address); document.body.classList.remove('side-open'); };
+    $('.nm', row).ondblclick = () => renameTerminal(t.address);
     $('.kill', row).onclick = () => { if (confirm(`End ${labelOf(t)}? The program running in it will stop.`)) { dropFromTree(t.address); endTerminal(t.address); } };
     box.appendChild(row);
   }
@@ -845,12 +858,13 @@ function renderUnplaced() {   // plain terminals no tab shows
 
 // the split tree as nested flex boxes, with draggable dividers
 let lastSig = '';
+const flexOf = (n, i) => `${n.w[i] * n.c.length / n.w.reduce((a, b) => a + b, 0)} 1 0px`;
 function buildNode(n) {
   if (isLeaf(n)) return P.get(n.a).el;
   const el = document.createElement('div'); el.className = `split ${n.d}`;
   const kids = n.c.map(buildNode);
   kids.forEach((k, i) => {
-    k.style.flex = `${n.w[i]} 1 0px`;
+    k.style.flex = flexOf(n, i);
     if (i) el.appendChild(divider(n, i - 1, el, kids));
     el.appendChild(k);
   });
@@ -866,7 +880,7 @@ function divider(n, i, container, kids) {
       const dx = ((row ? ev.clientX : ev.clientY) - start) / size * total;
       let a = w0[i] + dx, b = w0[i + 1] - dx;
       if (a < min) { b -= min - a; a = min; } if (b < min) { a -= min - b; b = min; }
-      n.w[i] = a; n.w[i + 1] = b; kids[i].style.flex = `${a} 1 0px`; kids[i + 1].style.flex = `${b} 1 0px`;
+      n.w[i] = a; n.w[i + 1] = b; kids.forEach((k, j) => { k.style.flex = flexOf(n, j); });
     };
     const up = () => {
       d.classList.remove('active'); d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up);
