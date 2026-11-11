@@ -80,6 +80,20 @@ body.side-hidden #side-show{display:grid}
 .r-peach{--c:var(--orange)}.r-lilac{--c:var(--lilac)}.r-gold{--c:var(--gold)}
 .sect .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;overflow:hidden;padding-top:1px}
 #blk-spaces .body{padding-top:2px}
+/* a machine: coloured cap, name, new-space +, status light, chevron; its spaces sit under it */
+.mrow{--c:var(--peach);display:flex;align-items:stretch;height:28px;margin-top:6px;gap:3px;cursor:pointer;flex:none}
+.mrow:first-child{margin-top:0}
+.mrow .cap{width:18px;background:var(--c);border-radius:14px 0 0 14px;flex:none}
+.mrow .bar{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;background:var(--c);border-radius:0 14px 14px 0;color:#000}
+.mrow .mn{flex:1;min-width:0;background:none;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:14px;letter-spacing:.1em;padding:0}
+.mrow .mplus{background:none;font-size:17px;font-weight:700;line-height:1;padding:0 4px;height:22px}
+.mrow .mplus:hover{background:#0002;border-radius:6px}
+.mrow .st{width:11px;height:11px;border-radius:50%;border:2px solid #000;flex:none;background:var(--dot,#44cc44);padding:0}
+.mrow.local .st{background:var(--local-dot,#44cc44)}
+.mrow .chev{background:none;width:14px;height:22px;font-size:17px;line-height:1;padding:0;display:grid;place-items:center;transition:transform .15s}
+.mrow.open .chev{transform:rotate(90deg)}
+.mrow:hover .bar,.mrow:hover .cap{filter:brightness(1.08)}
+.row.sp{margin-left:14px}
 .sect .body.foot{gap:4px;overflow:visible}
 .rail-head{display:flex;align-items:center;justify-content:space-between}
 .rail-title{color:var(--orange);font-weight:700;font-size:16px;padding:2px 4px;flex:none}
@@ -203,6 +217,10 @@ dialog{background:#0c0912;color:var(--tan);border:3px solid var(--orange);border
 dialog::backdrop{background:#000a}
 dialog h3{margin:0 0 12px;color:var(--orange);letter-spacing:.2em}
 dialog label{display:grid;gap:4px;margin-bottom:10px;font-size:13px;color:var(--peach)}
+dialog label.chk{display:flex;align-items:center;gap:8px}
+dialog label.chk input{width:auto}
+#mach-dlg{width:min(520px,94vw)}
+#mach-msg{margin:4px 0 8px;min-height:1.2em}#mach-msg.err{color:#ff7766;font-size:14px}
 dialog input{font:inherit;font-size:16px;letter-spacing:.04em;text-transform:none;padding:8px 10px;border:0;border-radius:12px;background:#1f1530;color:var(--tan);width:100%}
 dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-radius:16px}
 #pal-dlg,#pick-dlg{padding:12px;min-width:min(560px,94vw);top:12vh;margin:0 auto;border-radius:0 22px 0 22px}

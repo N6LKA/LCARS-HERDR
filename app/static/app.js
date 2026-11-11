@@ -45,7 +45,9 @@ const S = {
   autoOpen: localStorage.getItem('lcars-autoopen') !== 'off',
   agents: [],            // coding agents this server knows, with an installed flag (from /api/agents)
   agentEnv: '',
-  coreName: '',          // this server's core name, shown as the machine
+  coreName: '',          // this server's core name, the default name of the machine it runs on
+  localName: '',         // the name shown for this server instead, set by renaming it (kept in the layout)
+  machines: [],          // other machines added to the core, with their connection state
   linkOk: false,
   remoteVersion: 0,      // newest layout version another browser announced
   saving: false,
@@ -124,7 +126,7 @@ function swapLeaves(n, a, b) {
   return { ...n, c: n.c.map(x => swapLeaves(x, a, b)) };
 }
 const newTab = (root = null) => ({ id: uid(), name: null, root });
-const newSpace = name => { const t = newTab(); return { id: uid(), name, tabs: [t], tab: t.id }; };
+const newSpace = (name, machine = '') => { const t = newTab(); return { id: uid(), name, tabs: [t], tab: t.id, ...(machine ? { machine } : {}) }; };
 const curSpace = () => S.spaces.find(s => s.id === S.active) || S.spaces[0];
 const curTab = () => { const sp = curSpace(); return sp && (sp.tabs.find(t => t.id === sp.tab) || sp.tabs[0]); };
 function locate(addr) {
@@ -132,6 +134,13 @@ function locate(addr) {
   return null;
 }
 const spaceAddrs = sp => sp.tabs.flatMap(t => leaves(t.root));
+// ── machines: this server is '' ; another machine added to the core is its name, and its terminals are `name/t7`
+const MACHINE_COLORS = ['var(--peach)', 'var(--lilac)', 'var(--sky)', 'var(--gold)', 'var(--violet)', 'var(--tan)'];
+const machineOf = addr => { const i = (addr || '').indexOf('/'); return i > 0 ? addr.slice(0, i) : ''; };
+const spaceMachine = sp => (sp && sp.machine) || '';
+const machineView = name => S.machines.find(m => m.name === name);
+const machineLabel = name => (name || S.localName || S.coreName || '—').toUpperCase();
+let collapsedMachines = (() => { try { return new Set(JSON.parse(localStorage.getItem('lcars-machines-collapsed') || '[]')); } catch { return new Set(); } })();
 const spaceName = (sp, i) => sp.name || folderAutoName(sp) || `SPACE ${i + 1}`;
 function folderAutoName(sp) {
   const a = sp.tabs.flatMap(t => leaves(t.root))[0]; const t = a && S.terms.get(a);
@@ -149,6 +158,7 @@ async function loadLayout() {
   try { doc = await api(`/api/doc/${encodeURIComponent(DOC)}`); } catch (e) { toast('Layout unavailable: ' + e.message, true); }
   S.docVersion = doc.version || 0;
   const v = doc.value;
+  S.localName = (v && v.localName) || '';
   if (v && v.v === 2 && Array.isArray(v.spaces) && v.spaces.length) { S.spaces = v.spaces; S.active = v.active; S.dismissed = new Set(v.dismissed || []); }
   else if (v && Array.isArray(v.workspaces) && v.workspaces.length) {       // first version: flat workspaces
     S.spaces = v.workspaces.map(w => {
@@ -168,7 +178,7 @@ function saveLayout() {
   saveT = setTimeout(async () => {
     const url = `/api/doc/${encodeURIComponent(DOC)}`;
     const put = () => api(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ value: { v: 2, spaces: S.spaces, active: S.active, dismissed: [...S.dismissed].slice(-200) }, version: S.docVersion }) });
+      body: JSON.stringify({ value: { v: 2, spaces: S.spaces, active: S.active, dismissed: [...S.dismissed].slice(-200), localName: S.localName || undefined }, version: S.docVersion }) });
     saveT = null; S.saving = true;
     try { S.docVersion = (await put()).version; }
     catch { try { S.docVersion = (await api(url)).version; S.docVersion = (await put()).version; } catch {} }
@@ -186,7 +196,7 @@ async function maybeSync() {
     const v = doc.value;
     if (!v || v.v !== 2 || !Array.isArray(v.spaces) || !v.spaces.length) return;
     const tabs = new Map(S.spaces.map(sp => [sp.id, sp.tab])), active = S.active;
-    S.spaces = v.spaces; S.dismissed = new Set(v.dismissed || []);
+    S.spaces = v.spaces; S.dismissed = new Set(v.dismissed || []); S.localName = v.localName || '';
     for (const sp of S.spaces) if (tabs.has(sp.id) && sp.tabs.some(t => t.id === tabs.get(sp.id))) sp.tab = tabs.get(sp.id);
     S.active = S.spaces.some(sp => sp.id === active) ? active : S.spaces[0].id;
     render();
@@ -197,6 +207,7 @@ const commit = () => { saveLayout(); render(); };
 // ── terminals ─────────────────────────────────────────────────────────
 async function refreshTerms() {
   const data = await api('/api/terminals');
+  S.machines = data.machines || [];
   const seen = new Set();
   for (const t of data.terminals) {
     seen.add(t.address);
@@ -215,6 +226,8 @@ function prune() {   // drop panes whose terminal is gone (ended while this page
   for (const [a, ts] of S.fresh) if (now - ts > 8000) S.fresh.delete(a);
   for (const sp of S.spaces) for (const tab of sp.tabs) {
     for (const a of leaves(tab.root)) {
+      const mv = machineOf(a) && machineView(machineOf(a));
+      if (machineOf(a) && !(mv && mv.state === 'connected')) continue;      // not connected (or not known yet): keep its panes
       if (!S.terms.has(a) && !S.fresh.has(a)) { tab.root = removeLeaf(tab.root, a); changed = true; }
     }
   }
@@ -245,7 +258,10 @@ function play(name) {
   } catch {}
 }
 async function createTerminal(kind, opt = {}) {
-  const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: opt.cwd || undefined, cols: 120, rows: 32 });
+  const machine = opt.machine !== undefined ? opt.machine : spaceMachine(curSpace());
+  // a folder belongs to one machine: use it only if it was typed, or comes from a pane on the same machine
+  const cwd = opt.cwd && (opt.explicit || opt.machine !== undefined || machineOf(S.focus || '') === machine) ? opt.cwd : undefined;
+  const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: cwd || undefined, on: machine || undefined, cols: 120, rows: 32 });
   S.terms.set(t.address, t); S.fresh.set(t.address, Date.now());
   return t.address;
 }
@@ -308,7 +324,7 @@ async function splitPane(addr, dir, kind = 'shell') {
   const loc = addr && locate(addr);
   if (!loc) return newTabWith(kind, { cwd: cwdOf(S.focus) });
   try {
-    const na = await createTerminal(kind, { cwd: cwdOf(addr) });
+    const na = await createTerminal(kind, { cwd: cwdOf(addr), machine: machineOf(addr) });
     loc.tab.root = insertBeside(loc.tab.root, addr, dir === 'right' ? 'row' : 'col', na);
     S.zoomed[loc.tab.id] = null; S.focus = na; commit(); focusPane(na);
   } catch (e) { toast(e.message, true); }
@@ -418,7 +434,12 @@ def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font 
 def('app.zoom_out', 'Smaller terminal text', () => { S.font = Math.max(9, S.font - 1); applyFont(); }, 'App');
 def('app.zoom_reset', 'Reset terminal text size', () => { S.font = 15; applyFont(); }, 'App');
 def('sound.toggle', 'Turn sound on or off', () => toggleSound(), 'App');
-def('space.new', 'New space', async () => { const n = await ask('NEW SPACE', '', 'name (optional)'); if (n === null) return; const sp = newSpace(n ? n.toUpperCase() : null); S.spaces.push(sp); S.active = sp.id; S.focus = null; commit(); }, 'Spaces');
+async function newSpaceOn(machine) {
+  if (machine) { const mv = machineView(machine); if (!mv || mv.state !== 'connected') return toast(`${machineLabel(machine)} is not connected`, true); }
+  const n = await ask('NEW SPACE', '', 'name (optional)'); if (n === null) return;
+  const sp = newSpace(n ? n.toUpperCase() : null, machine); S.spaces.push(sp); S.active = sp.id; S.focus = null; collapsedMachines.delete(machine); commit();
+}
+def('space.new', 'New space', () => newSpaceOn(spaceMachine(curSpace())), 'Spaces');
 def('space.rename', 'Rename space', id => renameSpace(typeof id === 'string' ? id : undefined), 'Spaces');
 def('space.close', 'Close space', id => closeSpace(typeof id === 'string' ? id : undefined), 'Spaces');
 def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
@@ -581,7 +602,7 @@ async function pasteClip() {
 async function loadAgents() {
   try { const d = await api('/api/agents'); S.agents = d.agents; S.agentEnv = d.env_file; } catch {}
 }
-const startAgent = a => a.id === 'claude' ? openBeside('claude', { cwd: cwdOf(S.focus) }) : openBeside('agent', { agent: a.id, cwd: cwdOf(S.focus) });
+const startAgent = a => spaceMachine(curSpace()) && a.id !== 'claude' ? toast('Other agents start on this server only for now', true) : a.id === 'claude' ? openBeside('claude', { cwd: cwdOf(S.focus) }) : openBeside('agent', { agent: a.id, cwd: cwdOf(S.focus) });
 async function agentsMenu(x, y) {
   await loadAgents();
   const ok = S.agents.filter(a => a.installed), no = S.agents.filter(a => !a.installed), items = [];
@@ -862,27 +883,52 @@ function renderTabs() {
     if (tab.id === sp.tab) requestAnimationFrame(() => b.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   });
 }
+function machineRow(name, mi) {
+  const v = name ? machineView(name) : null, state = name ? (v ? v.state : 'removed') : 'connected';
+  const row = document.createElement('div');
+  row.className = 'mrow' + (name ? '' : ' local') + (collapsedMachines.has(name) ? '' : ' open');
+  row.style.setProperty('--c', MACHINE_COLORS[mi % MACHINE_COLORS.length]);
+  if (name) row.style.setProperty('--dot', state === 'connected' ? '#44cc44' : state === 'connecting' ? 'var(--gold)' : '#ff5544');
+  row.innerHTML = '<span class="cap"></span><span class="bar"><button class="mn"></button><button class="mplus" title="New space on this machine">+</button><button class="st"></button><button class="chev">›</button></span>';
+  $('.mn', row).textContent = machineLabel(name);
+  const why = !name ? (S.linkOk ? 'Connected' : 'Link lost')
+    : state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting…'
+    : state === 'needs_login' ? 'Needs a login: this server cannot log in there yet' : (v && v.why) || 'Not reachable';
+  $('.st', row).title = why;
+  row.onclick = () => toggleMachine(name);
+  $('.mplus', row).onclick = ev => { ev.stopPropagation(); newSpaceOn(name); };
+  $('.st', row).onclick = ev => { ev.stopPropagation(); if (name && state !== 'connected') showLoginHelp(name, why); else toast(why); };
+  row.ondblclick = ev => { ev.preventDefault(); renameMachine(name); };
+  row.oncontextmenu = ev => machineMenu(ev, name);
+  return row;
+}
 function renderSpaces() {
   const box = $('#spaces'); box.textContent = '';
-  S.spaces.forEach((sp, i) => {
-    const st = topState(spaceAddrs(sp)), name = spaceName(sp, i);
-    const row = document.createElement('div');
-    row.className = 'row' + (sp.id === S.active ? ' on' : ''); row.draggable = true;
-    row.innerHTML = '<span class="tile"></span><button class="nm"></button>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '');
-    const tile = $('.tile', row); tile.textContent = name[0] || '?'; tile.style.setProperty('--c', SPACE_COLORS[i % SPACE_COLORS.length]);
-    $('.nm', row).textContent = name;
-    row.onclick = () => selectSpace(sp.id);
-    row.ondblclick = () => renameSpace(sp.id);
-    row.oncontextmenu = ev => spaceMenu(ev, sp.id);
-    row.ondragstart = ev => { ev.dataTransfer.setData('text/x-space', String(i)); row.classList.add('drag'); };
-    row.ondragend = () => row.classList.remove('drag');
-    row.ondragover = ev => { if ([...ev.dataTransfer.types].includes('text/x-space')) { ev.preventDefault(); row.classList.add('drop-before'); } };
-    row.ondragleave = () => row.classList.remove('drop-before');
-    row.ondrop = ev => { ev.preventDefault(); row.classList.remove('drop-before'); moveInList(S.spaces, Number(ev.dataTransfer.getData('text/x-space')), i); commit(); };
-    box.appendChild(row);
+  const names = ['', ...S.machines.map(m => m.name)];
+  for (const sp of S.spaces) if (!names.includes(spaceMachine(sp))) names.push(spaceMachine(sp));   // spaces of a machine no longer added
+  names.forEach((mname, mi) => {
+    box.appendChild(machineRow(mname, mi));
+    if (collapsedMachines.has(mname)) return;
+    S.spaces.forEach((sp, i) => {
+      if (spaceMachine(sp) !== mname) return;
+      const st = topState(spaceAddrs(sp)), name = spaceName(sp, i);
+      const row = document.createElement('div');
+      row.className = 'row sp' + (sp.id === S.active ? ' on' : ''); row.draggable = true;
+      row.innerHTML = '<span class="tile"></span><button class="nm"></button>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '');
+      const tile = $('.tile', row); tile.textContent = name[0] || '?'; tile.style.setProperty('--c', SPACE_COLORS[i % SPACE_COLORS.length]);
+      $('.nm', row).textContent = name;
+      row.onclick = () => selectSpace(sp.id);
+      row.ondblclick = () => renameSpace(sp.id);
+      row.oncontextmenu = ev => spaceMenu(ev, sp.id);
+      row.ondragstart = ev => { ev.dataTransfer.setData('text/x-space', String(i)); row.classList.add('drag'); };
+      row.ondragend = () => row.classList.remove('drag');
+      row.ondragover = ev => { if ([...ev.dataTransfer.types].includes('text/x-space')) { ev.preventDefault(); row.classList.add('drop-before'); } };
+      row.ondragleave = () => row.classList.remove('drop-before');
+      row.ondrop = ev => { ev.preventDefault(); row.classList.remove('drop-before'); moveInList(S.spaces, Number(ev.dataTransfer.getData('text/x-space')), i); commit(); };
+      box.appendChild(row);
+    });
   });
   $('#spaces-count').textContent = pad2(S.spaces.length);
-  $('#machine-name').textContent = (S.coreName || '—').toUpperCase();
 }
 const AGENT_SORT_KEY = 'lcars-agent-sort';
 let agentSort = localStorage.getItem(AGENT_SORT_KEY) === 'space' ? 'space' : 'priority';
@@ -1002,10 +1048,10 @@ function renderPanes() {
 }
 function renderFoot() {
   const agents = agentList(), blocked = agents.filter(t => stateOf(t) === 'blocked').length;
-  $('#f-machine').textContent = (S.coreName || '').toUpperCase();
+  $('#f-machine').textContent = machineLabel(spaceMachine(curSpace()));
   $('#f-spaces').textContent = `${S.spaces.length} SPACE${S.spaces.length === 1 ? '' : 'S'}`;
   const fa = $('#f-agents'); fa.textContent = `${agents.length} AGENT${agents.length === 1 ? '' : 'S'}${blocked ? ` · ${blocked} NEED YOU` : ''}`; fa.classList.toggle('warn', blocked > 0);
-  const sp = curSpace(); $('#top-info').textContent = `${sp ? spaceName(sp, S.spaces.indexOf(sp)) : ''}${S.coreName ? ' · ' + S.coreName.toUpperCase() : ''}`;
+  const sp = curSpace(); $('#top-info').textContent = `${sp ? spaceName(sp, S.spaces.indexOf(sp)) : ''}${' · ' + machineLabel(spaceMachine(sp))}`;
 }
 
 // ── event feed ────────────────────────────────────────────────────────
@@ -1025,7 +1071,96 @@ function connectEvents() {
   };
   ws.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
-function setConn(ok) { S.linkOk = ok; const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'chip sky' + (ok ? '' : ' bad'); $('#machine').style.setProperty('--dot', ok ? '#44cc44' : '#ff5544'); }
+function setConn(ok) { S.linkOk = ok; const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'chip sky' + (ok ? '' : ' bad'); document.documentElement.style.setProperty('--local-dot', ok ? '#44cc44' : '#ff5544'); if (S.spaces.length) renderSpaces(); }
+
+// ── machines: collapse, rename, remove, add ───────────────────────────
+function toggleMachine(name) {
+  collapsedMachines.has(name) ? collapsedMachines.delete(name) : collapsedMachines.add(name);
+  try { localStorage.setItem('lcars-machines-collapsed', JSON.stringify([...collapsedMachines])); } catch {}
+  renderSpaces();
+}
+function machineMenu(e, name) {
+  e.preventDefault();
+  const v = name && machineView(name);
+  showMenu(e.clientX, e.clientY, [
+    { label: 'Rename', fn: () => renameMachine(name) },
+    { label: 'New space here', fn: () => newSpaceOn(name) },
+    { label: 'Reconnect', show: !!name, fn: () => reconnectMachine(name) },
+    '-',
+    { label: 'Remove machine', show: !!name, fn: () => removeMachine(name) },
+  ]);
+}
+function renameAddresses(oldName, newName) {     // `old/t7` becomes `new/t7` everywhere the layout and this page refer to it
+  const re = a => (typeof a === 'string' && a.startsWith(oldName + '/')) ? newName + a.slice(oldName.length) : a;
+  const walk = n => !n ? n : isLeaf(n) ? { ...n, a: re(n.a) } : { ...n, c: n.c.map(walk) };
+  for (const sp of S.spaces) { if (sp.machine === oldName) sp.machine = newName; for (const t of sp.tabs) t.root = walk(t.root); }
+  for (const k of Object.keys(S.zoomed)) if (S.zoomed[k]) S.zoomed[k] = re(S.zoomed[k]);
+  if (S.focus) S.focus = re(S.focus);
+  S.dismissed = new Set([...S.dismissed].map(re));
+  if (collapsedMachines.delete(oldName)) collapsedMachines.add(newName);
+}
+async function renameMachine(name) {
+  const v = await ask('RENAME MACHINE', name || S.localName || S.coreName || '', name ? 'letters, digits, - _ .' : 'the name shown for this server');
+  if (v === null || !v) return;
+  if (!name) { S.localName = v.slice(0, 32); commit(); return; }
+  const nn = v.toLowerCase();
+  if (nn === name) return;
+  try { await post('/api/machines/rename', { machine: name, new_name: nn }); }
+  catch (e) { return toast(e.message, true); }
+  renameAddresses(name, nn);
+  for (const a of [...P.keys()]) if (machineOf(a) === name) { const p = P.get(a); p.destroy ? p.destroy() : p.el.remove(); P.delete(a); }
+  commit(); refreshTerms().catch(() => {});
+}
+async function reconnectMachine(name) {
+  try { const m = await post('/api/machines/connect', { machine: name }); toast(`${machineLabel(name)} · ${m.state || 'connecting'}`.toUpperCase()); }
+  catch (e) { toast(e.message, true); }
+  refreshTerms().catch(() => {});
+}
+async function removeMachine(name) {
+  const spaces = S.spaces.filter(sp => spaceMachine(sp) === name), n = spaces.reduce((k, sp) => k + spaceAddrs(sp).length, 0);
+  if (!confirm(`Remove ${machineLabel(name)}? Its ${spaces.length} space${spaces.length === 1 ? '' : 's'} leave LCARS${n ? `; its ${n} terminal${n === 1 ? '' : 's'} keep running on that machine` : ''}.`)) return;
+  try { await api('/api/machines?machine=' + encodeURIComponent(name), { method: 'DELETE' }); }
+  catch (e) { return toast(e.message, true); }
+  for (const sp of spaces) for (const a of spaceAddrs(sp)) { S.dismissed.add(a); const p = P.get(a); if (p) { p.destroy ? p.destroy() : p.el.remove(); P.delete(a); } }
+  S.spaces = S.spaces.filter(sp => spaceMachine(sp) !== name);
+  if (!S.spaces.length) S.spaces = [newSpace('BRIDGE')];
+  if (!S.spaces.some(sp => sp.id === S.active)) { S.active = S.spaces[0].id; S.focus = null; }
+  collapsedMachines.delete(name); commit(); refreshTerms().catch(() => {});
+}
+async function keyHelp(into, cmdEl) {      // this server's public key and the one line that lets it log in
+  try { const k = await api('/api/machines/pubkey'); cmdEl.textContent = k.command; into.hidden = false; return k.command; }
+  catch (e) { toast(e.message, true); }
+}
+async function showLoginHelp(name, why) {
+  $('#info-title').textContent = `${machineLabel(name)} · ${why.toUpperCase()}`;
+  const body = $('#info-body'); body.textContent = '';
+  const para = t => { const p = document.createElement('p'); p.className = 'ip'; p.textContent = t; body.appendChild(p); };
+  para('This server logs in to other machines with its own SSH key. If it cannot, run this once in that machine\'s console, then right-click the machine and choose Reconnect:');
+  const box = document.createElement('div'); box.className = 'icode'; const code = document.createElement('code'); const copy = document.createElement('button');
+  copy.className = 'pill orange'; copy.textContent = 'COPY'; box.append(code, copy); body.appendChild(box);
+  const cmd = await keyHelp({ hidden: false }, code);
+  copy.onclick = async () => { try { await navigator.clipboard.writeText(cmd || ''); toast('COPIED'); } catch { toast('Copy needs a secure page (https)', true); } };
+  $('#info-shell').hidden = true; $('#info-dlg').showModal();
+}
+function openAddMachine() {
+  $('#mach-name').value = ''; $('#mach-target').value = ''; $('#mach-install').checked = true; $('#mach-help').hidden = true;
+  const m = $('#mach-msg'); m.className = 'dim'; m.textContent = ''; $('#mach-go').disabled = false; $('#mach-go').textContent = 'CONNECT';
+  $('#mach-dlg').showModal(); $('#mach-name').focus();
+}
+async function submitMachine() {
+  const name = $('#mach-name').value.trim().toLowerCase(), target = $('#mach-target').value.trim(), msg = $('#mach-msg'), go = $('#mach-go');
+  if (!name || !target) { msg.className = 'err'; msg.textContent = 'Give it a name and an SSH address.'; return; }
+  go.disabled = true; go.textContent = 'CONNECTING…'; msg.className = 'dim'; msg.textContent = 'Logging in over SSH…'; $('#mach-help').hidden = true;
+  try {
+    await post('/api/machines', { name, target, install: $('#mach-install').checked });
+    $('#mach-dlg').close();
+    const sp = newSpace(null, name); S.spaces.push(sp); S.active = sp.id; S.focus = null; collapsedMachines.delete(name); commit();
+    await refreshTerms().catch(() => {}); toast(`${machineLabel(name)} CONNECTED`);
+  } catch (e) {
+    msg.className = 'err'; msg.textContent = e.message;
+    if (/log ?in|permission|publickey|password|host key|reach|denied/i.test(e.message)) keyHelp($('#mach-help'), $('#mach-cmd'));
+  } finally { go.disabled = false; go.textContent = 'CONNECT'; }
+}
 
 // ── wiring ────────────────────────────────────────────────────────────
 const KEYSEQ = { esc: '\x1b', tab: '\t', 'ctrl-c': '\x03', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r' };
@@ -1036,7 +1171,8 @@ function toggleSound() {
 function startSession(kind) {
   const dlg = $('#new-dlg');
   $('#new-title').textContent = kind === 'claude' ? 'NEW CLAUDE SESSION' : 'NEW SHELL';
-  $('#new-name').value = ''; $('#new-cwd').value = cwdOf(S.focus) || '/root'; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
+  const remote = !!spaceMachine(curSpace()), here = machineOf(S.focus || '') === spaceMachine(curSpace());
+  $('#new-name').value = ''; $('#new-cwd').value = remote ? (here && cwdOf(S.focus)) || '' : (here && cwdOf(S.focus)) || '/root'; $('#new-cwd').placeholder = remote ? 'empty: its home folder' : ''; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
 }
 function init() {
   $('#new-claude').onclick = () => startSession('claude');
@@ -1049,6 +1185,10 @@ function init() {
   $('#search-btn').onclick = openPicker;
   initPanel();
   $('#agents-sort').onclick = () => { agentSortMenu(); };
+  $('#machine-add').onclick = openAddMachine;
+  $('#mach-form').addEventListener('submit', ev => { if (ev.submitter && ev.submitter.value === 'cancel') return; ev.preventDefault(); submitMachine(); });
+  for (const id of ['#mach-name', '#mach-target']) $(id).addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); submitMachine(); } });
+  $('#mach-copy').onclick = async () => { try { await navigator.clipboard.writeText($('#mach-cmd').textContent); toast('COPIED'); } catch { toast('Copy needs a secure page (https)', true); } };
   $('#side-btn').onclick = $('#side-show').onclick = () => run('layout.toggle_sidebar');
   const pk = $('#pick-input');
   pk.addEventListener('input', () => fillPicker(pk.value));
@@ -1059,6 +1199,7 @@ function init() {
   setupTitlebar();
   $('#agents-btn').onclick = ev => { const r = ev.currentTarget.getBoundingClientRect(); agentsMenu(r.right + 6, r.top); };
   $('#info-close').onclick = () => $('#info-dlg').close();
+  $('#info-dlg').addEventListener('close', () => { $('#info-shell').hidden = false; });
   $('#info-shell').onclick = () => { $('#info-dlg').close(); openBeside('shell', { cwd: cwdOf(S.focus) }); };
   $('#keys-btn').onclick = () => run('app.help');
   $('#f-hint').onclick = () => run('app.palette');
@@ -1071,7 +1212,7 @@ function init() {
   $('#tabs').addEventListener('wheel', ev => { ev.preventDefault(); stepTab(ev.deltaY > 0 || ev.deltaX > 0 ? 1 : -1); }, { passive: false });
   $('#new-dlg').addEventListener('close', ev => {
     const dlg = ev.target;
-    if (dlg.returnValue === 'ok') openBeside(dlg.dataset.kind, { name: $('#new-name').value.trim(), cwd: $('#new-cwd').value.trim() });
+    if (dlg.returnValue === 'ok') openBeside(dlg.dataset.kind, { name: $('#new-name').value.trim(), cwd: $('#new-cwd').value.trim(), explicit: true });
   });
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));

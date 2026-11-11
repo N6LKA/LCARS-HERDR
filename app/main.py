@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import agents, fs_git
+from . import agents, fs_git, machines
 from .core_client import CLOSE, DATA, FOCUS, RESIZE, Core, CoreClosed, CoreError
 
 log = logging.getLogger("lcars")
@@ -40,6 +40,7 @@ XTERM_ENV = {"TERM": "xterm-256color", "COLORTERM": "truecolor"}
 
 app = FastAPI(title="LCARS", docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(fs_git.router)
+app.include_router(machines.router)
 
 
 # ── auth ────────────────────────────────────────────────────────────────

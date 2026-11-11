@@ -78,6 +78,7 @@ function panelSync() {                // called after every draw: follow the spa
 
 async function panelRefresh() {
   if (!PANEL.which || PANEL.busy) return;
+  if (S.focus && S.focus.includes('/')) { panelEl('p-sub').textContent = ''; panelEl('p-back').hidden = true; panelEl('p-foot').hidden = true; return renderMessage('Not available on remote machines yet.'); }
   PANEL.busy = true;
   try { await (PANEL.which === 'files' ? filesRefresh() : changesRefresh()); }
   catch (e) { renderMessage(e.message || String(e)); }

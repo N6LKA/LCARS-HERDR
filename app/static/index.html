@@ -44,7 +44,6 @@
       <div class="rail r-peach"><span id="spaces-count">01</span></div>
       <div class="body">
         <div class="rail-head"><span class="rail-title">SPACES</span><button class="rail-add" id="space-add" title="New space">+</button></div>
-        <div id="machine" class="machine"><span class="cap"></span><span class="bar"><span id="machine-name">—</span><i id="machine-dot"></i></span></div>
         <div id="spaces"></div>
       </div>
     </section>
@@ -65,6 +64,7 @@
         <button class="pill orange" id="new-claude">NEW CLAUDE</button>
         <button class="pill lilac" id="new-shell">NEW SHELL</button>
         <button class="pill peach" id="agents-btn" title="Start another coding agent">MORE AGENTS ▾</button>
+        <button class="pill tan" id="machine-add" title="Connect another machine over SSH">ADD MACHINE</button>
         <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
         <button class="pill tan" id="install-btn" hidden>INSTALL APP</button>
         <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button></div>
@@ -112,6 +112,21 @@
     <label>NAME (optional)<input id="new-name" maxlength="32" pattern="[a-z0-9][a-z0-9_.\-]*" placeholder="e.g. homelab"></label>
     <label>FOLDER<input id="new-cwd" value="/root"></label>
     <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" value="ok">ENGAGE</button></div>
+  </form>
+</dialog>
+
+<dialog id="mach-dlg">
+  <form method="dialog" id="mach-form">
+    <h3>ADD MACHINE</h3>
+    <label>NAME<input id="mach-name" maxlength="32" placeholder="e.g. rssh-server" autocomplete="off" spellcheck="false"></label>
+    <label>SSH ADDRESS<input id="mach-target" placeholder="user@192.168.1.50" autocomplete="off" spellcheck="false"></label>
+    <label class="chk"><input type="checkbox" id="mach-install" checked> INSTALL HC THERE IF IT HAS NONE</label>
+    <p id="mach-msg" class="dim"></p>
+    <div id="mach-help" hidden>
+      <p class="ip">This server cannot log in there yet. On that machine's console, run this once, then press CONNECT again:</p>
+      <div class="icode"><code id="mach-cmd"></code><button type="button" class="pill orange" id="mach-copy">COPY</button></div>
+    </div>
+    <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" id="mach-go" value="ok">CONNECT</button></div>
   </form>
 </dialog>
 
