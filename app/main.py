@@ -27,8 +27,11 @@ log = logging.getLogger("lcars")
 
 STATIC = Path(__file__).parent / "static"
 TOKEN = os.environ.get("LCARS_TOKEN", "")
-# Proxies (e.g. Nginx Proxy Manager behind Authelia) whose `Remote-User` header we accept as a login.
+# Nginx Proxy Manager already ran its Authelia check before forwarding a request for one of our
+# host names, so requests from these proxy addresses for these names count as logged in.
+# (NPM does not pass Authelia's Remote-User header through to the app, so we cannot rely on it.)
 TRUSTED_PROXIES = {p.strip() for p in os.environ.get("LCARS_TRUSTED_PROXIES", "").split(",") if p.strip()}
+PROXY_HOSTS = {h.strip().lower() for h in os.environ.get("LCARS_PROXY_HOSTS", "").split(",") if h.strip()}
 COOKIE = "lcars_session"
 MAX_UPLOAD = 8 * 1024 * 1024  # terminal.put accepts at most 8 MB raw
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
@@ -52,10 +55,17 @@ def _login_blocked(ip: str) -> bool:
     return len(recent) >= 5
 
 
+def _via_trusted_proxy(headers, client_host: str | None) -> bool:
+    if client_host not in TRUSTED_PROXIES or not headers.get("x-forwarded-for"):
+        return False
+    host = headers.get("host", "").split(":")[0].lower()
+    return bool(PROXY_HOSTS) and host in PROXY_HOSTS  # no host list configured = never trust
+
+
 def _authorized(headers, cookies, client_host: str | None) -> bool:
     if not TOKEN:
         return False  # never run open
-    if client_host in TRUSTED_PROXIES and headers.get("remote-user"):
+    if _via_trusted_proxy(headers, client_host):
         return True
     if hmac.compare_digest(cookies.get(COOKIE, ""), _session_value()):
         return True
