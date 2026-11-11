@@ -5,16 +5,30 @@
 const $ = (s, r = document) => r.querySelector(s);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const DOC = new URLSearchParams(location.search).get('doc') || 'lcars-web';
-const STATUS_WORD = { working: 'WORKING', blocked: 'NEEDS YOU', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
-const STATUS_COLOR = { working: 'var(--s-working)', blocked: 'var(--s-blocked)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
-const RANK = { blocked: 4, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
-const ORDER = { blocked: 0, done: 1, working: 2, idle: 3, live: 4, ended: 5 };
-const GROUPS = [['blocked', 'NEEDS YOU'], ['done', 'DONE'], ['working', 'WORKING'], ['idle', 'IDLE'], ['live', 'LIVE']];
+const STATUS_WORD = { working: 'WORKING', blocked: 'NEEDS YOU', error: 'ERROR', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
+const STATUS_COLOR = { working: 'var(--s-working)', blocked: 'var(--s-blocked)', error: 'var(--red)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
+const RANK = { error: 5, blocked: 4, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
+const ORDER = { blocked: 0, error: 0.5, done: 1, working: 2, idle: 3, live: 4, ended: 5 };
+const GROUPS = [['blocked', 'NEEDS YOU'], ['error', 'ERROR'], ['done', 'DONE'], ['working', 'WORKING'], ['idle', 'IDLE'], ['live', 'LIVE']];
 const pad2 = n => String(n).padStart(2, '0');
 const SPACE_COLORS = ['var(--tan)', 'var(--lilac)', 'var(--peach)', 'var(--sky)', 'var(--violet)', 'var(--gold)'];
 const BARS = '<i></i><i></i><i></i><i></i>';
 const TRICORDER = `<span class="tri">${BARS}</span>`;
 
+// Which finished runs this browser has already looked at, by terminal address and its turn counter. The core keeps a
+// finished agent as "done" until someone views it; like the Herdr app, each viewer tracks that for itself, so a run
+// you have seen shows IDLE here and one you have not shows DONE.
+const VIEWED_KEY = 'lcars-viewed';
+const viewed = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem(VIEWED_KEY) || '{}'))); } catch { return new Map(); } })();
+function markViewed() {
+  if (!S.focus || !document.hasFocus() || document.hidden) return false;
+  const t = S.terms.get(S.focus), p = P.get(S.focus);
+  if (!t || !p || p.el.offsetParent === null || !(t.status && t.status.state === 'done') || viewed.get(t.address) === t.turn) return false;
+  viewed.set(t.address, t.turn);
+  for (const a of [...viewed.keys()]) if (!S.terms.has(a)) viewed.delete(a);
+  try { localStorage.setItem(VIEWED_KEY, JSON.stringify(Object.fromEntries(viewed))); } catch {}
+  return true;
+}
 const S = {
   terms: new Map(),      // address -> terminal facts from the core
   spaces: [],            // [{id, name|null, tab, tabs:[{id, name|null, root}]}]
@@ -56,7 +70,7 @@ function toast(msg, err = false) {
   const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
-const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : ((t.status && t.status.state) || 'live');
+const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : (t.status && t.status.state === 'done' && viewed.get(t.address) === t.turn ? 'idle' : ((t.status && t.status.state) || 'live'));
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
 const agentById = id => S.agents.find(a => a.id === id);
 const PROGRAMS = { claude: 'Claude Code', 'claude-code': 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex', grok: 'Grok', opencode: 'OpenCode',
@@ -244,7 +258,7 @@ const agentLive = addr => { const t = S.terms.get(addr); return !!t && isAgent(t
 function focusPane(addr) {
   if (!addr) return;
   S.focus = addr;
-  requestAnimationFrame(() => { const p = P.get(addr); if (p) { for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); p.term.focus(); } });
+  requestAnimationFrame(() => { const p = P.get(addr); if (p) { for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); p.term.focus(); } if (markViewed()) render(); });
 }
 function dropFromTree(addr) {      // remove a pane everywhere; an emptied tab closes if it has siblings
   S.dismissed.add(addr);
@@ -484,7 +498,7 @@ function ask(title, value = '', placeholder = '') {
   });
 }
 let ctxEl = null, ctxSel = -1;
-function closeMenu() { if (ctxEl) { ctxEl.remove(); ctxEl = null; ctxSel = -1; document.removeEventListener('keydown', menuKeys, true); } }
+function closeMenu() { const sb = document.getElementById('agents-sort'); if (sb) sb.classList.remove('on'); if (ctxEl) { ctxEl.remove(); ctxEl = null; ctxSel = -1; document.removeEventListener('keydown', menuKeys, true); } }
 function menuKeys(e) {
   const items = [...ctxEl.querySelectorAll('.it:not(.off)')];
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); return; }
@@ -501,11 +515,13 @@ function showMenu(x, y, items) {
   for (const it of items) {
     if (it === '-') { m.appendChild(document.createElement('hr')); continue; }
     if (it.show === false) continue;
-    const row = document.createElement('div'); row.className = 'it' + (it.off ? ' off' : '') + (it.dim ? ' dim' : '');
+    if (it.head) { const h = document.createElement('div'); h.className = 'hd'; h.textContent = it.head; m.appendChild(h); continue; }
+    const row = document.createElement('div'); row.className = 'it' + (it.off ? ' off' : '') + (it.dim ? ' dim' : '') + (it.check ? ' chk' : '');
     if (it.key) row.dataset.key = it.key;
     const hint = it.key || (it.cmd ? hintOf(it.cmd) : '');
-    row.innerHTML = '<span></span>' + (hint ? '<kbd></kbd>' : '');
-    $('span', row).textContent = it.label; if (hint) $('kbd', row).textContent = hint;
+    row.innerHTML = (it.icon ? '<span class="lb"><i class="ic"></i><span></span></span>' : '<span></span>') + (hint ? '<kbd></kbd>' : '');
+    if (it.icon) $('.ic', row).innerHTML = it.icon;
+    $(it.icon ? '.lb span' : 'span', row).textContent = it.label; if (hint) $('kbd', row).textContent = hint;
     row.onclick = () => { closeMenu(); if (it.fn) it.fn(); else run(it.cmd, it.arg); };
     m.appendChild(row);
   }
@@ -544,7 +560,9 @@ function spaceMenu(e, id) {
     { label: 'Rename', cmd: 'space.rename', arg: id }, { label: 'New space', cmd: 'space.new' }, '-', { label: 'Close', cmd: 'space.close', arg: id },
   ]);
 }
-const setFocusQuiet = addr => { S.focus = addr; for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); };
+const setFocusQuiet = addr => { S.focus = addr; for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); if (markViewed()) render(); };
+window.addEventListener('focus', () => { if (markViewed()) render(); });
+document.addEventListener('visibilitychange', () => { if (markViewed()) render(); });
 async function copySel() {
   const p = P.get(S.focus); const t = p && p.term.getSelection();
   if (!t) return toast('Nothing selected');
@@ -821,7 +839,7 @@ class Pane {
 }
 
 // ── rendering ─────────────────────────────────────────────────────────
-function render() { renderTabs(); renderSpaces(); renderAgents(); renderUnplaced(); renderPanes(); renderFoot(); if (typeof panelSync === 'function') panelSync(); }
+function render() { markViewed(); renderTabs(); renderSpaces(); renderAgents(); renderUnplaced(); renderPanes(); renderFoot(); if (typeof panelSync === 'function') panelSync(); }
 
 function stateMark(state) { return `<span class="mk" data-state="${state}" style="--c:${STATUS_COLOR[state]}">${BARS}</span>`; }
 function renderTabs() {
@@ -866,18 +884,41 @@ function renderSpaces() {
   $('#spaces-count').textContent = pad2(S.spaces.length);
   $('#machine-name').textContent = (S.coreName || '—').toUpperCase();
 }
+const AGENT_SORT_KEY = 'lcars-agent-sort';
+let agentSort = localStorage.getItem(AGENT_SORT_KEY) === 'space' ? 'space' : 'priority';
+const ICON_CLOCK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const ICON_LAYERS = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>';
+function setAgentSort(mode) { agentSort = mode; localStorage.setItem(AGENT_SORT_KEY, mode); renderAgents(); }
+function agentSortMenu() {
+  const b = $('#agents-sort'), r = b.getBoundingClientRect();
+  showMenu(r.left, r.bottom + 4, [
+    { head: 'SORT AGENTS' },
+    { label: 'Priority', icon: ICON_CLOCK, check: agentSort === 'priority', fn: () => setAgentSort('priority') },
+    { label: 'Grouped by space', icon: ICON_LAYERS, check: agentSort === 'space', fn: () => setAgentSort('space') },
+  ]);
+  b.classList.add('on');
+}
 function renderAgents() {
   const box = $('#agents'); box.textContent = '';
   const list = agentList();
   $('#agents-count').textContent = pad2(list.length);
-  const header = (st, word, count) => { const h = document.createElement('div'); h.className = 'grp'; h.style.setProperty('--c', STATUS_COLOR[st]); h.textContent = `${word} · ${count}`; box.appendChild(h); };
+  const header = (color, word, count) => { const h = document.createElement('div'); h.className = 'grp'; h.style.setProperty('--c', color); h.textContent = `${word} · ${count}`; box.appendChild(h); };
+  // priority: grouped by what the agent is doing; space: grouped by the space it sits in (busiest first inside each)
+  const groupOf = t => { if (agentSort !== 'space') return stateOf(t); const l = locate(t.address); return l ? l.sp.id : '~none'; };
+  const groupInfo = key => {
+    if (agentSort !== 'space') return { color: STATUS_COLOR[key], word: (GROUPS.find(g => g[0] === key) || [key, key.toUpperCase()])[1] };
+    const i = S.spaces.findIndex(sp => sp.id === key);
+    return i < 0 ? { color: 'var(--gray)', word: 'NOT IN A SPACE' } : { color: SPACE_COLORS[i % SPACE_COLORS.length], word: spaceName(S.spaces[i], i).toUpperCase() };
+  };
+  const rank = t => { const k = groupOf(t); return agentSort === 'space' ? (k === '~none' ? 9999 : S.spaces.findIndex(sp => sp.id === k)) : 0; };
+  if (agentSort === 'space') list.sort((a, b) => (rank(a) - rank(b)) || (ORDER[stateOf(a)] - ORDER[stateOf(b)]) || (a.created_ms - b.created_ms));
   let lastGroup = null;
   for (const t of list) {
-    const st = stateOf(t), loc = locate(t.address);
-    if (st !== lastGroup) { lastGroup = st; header(st, (GROUPS.find(g => g[0] === st) || [st, st.toUpperCase()])[1], list.filter(x => stateOf(x) === st).length); }
+    const st = stateOf(t), loc = locate(t.address), g = groupOf(t);
+    if (g !== lastGroup) { lastGroup = g; const gi = groupInfo(g); header(gi.color, gi.word, list.filter(x => groupOf(x) === g).length); }
     const row = document.createElement('div');
     row.className = 'row agent' + (loc && loc.sp.id === S.active ? ' in' : '') + (t.address === S.focus ? ' here' : '');
-    row.dataset.state = st; row.style.setProperty('--c', STATUS_COLOR[st]);
+    row.dataset.state = st; row.dataset.addr = t.address; row.style.setProperty('--c', STATUS_COLOR[st]);
     row.innerHTML = `<span class="blk"></span>${TRICORDER}<button class="nm"></button><button class="kill" title="End this agent">⏻</button>`;
     $('.blk', row).textContent = STATUS_WORD[st];
     $('.nm', row).innerHTML = '<span></span><small></small>';
@@ -1007,6 +1048,7 @@ function init() {
   $('#space-add').onclick = () => run('space.new');
   $('#search-btn').onclick = openPicker;
   initPanel();
+  $('#agents-sort').onclick = () => { agentSortMenu(); };
   $('#side-btn').onclick = $('#side-show').onclick = () => run('layout.toggle_sidebar');
   const pk = $('#pick-input');
   pk.addEventListener('input', () => fillPicker(pk.value));

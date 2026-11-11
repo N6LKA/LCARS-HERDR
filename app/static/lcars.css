@@ -84,6 +84,8 @@ body.side-hidden #side-show{display:grid}
 .rail-head{display:flex;align-items:center;justify-content:space-between}
 .rail-title{color:var(--orange);font-weight:700;font-size:16px;padding:2px 4px;flex:none}
 #blk-agents .rail-title{color:var(--lilac)}
+.rail-ico{background:none;color:var(--lilac);display:grid;place-items:center;width:28px;height:24px;padding:0;border-radius:8px;flex:none}
+.rail-ico:hover,.rail-ico.on{background:#ffffff1a;color:#fff}
 .rail-add{background:var(--orange);border-radius:0 11px 11px 0;font-size:18px;line-height:1;padding:0 12px;height:22px;font-weight:700}
 #spaces,#terms{display:flex;flex-direction:column;gap:3px;overflow-y:auto;min-height:0;flex:0 1 auto}
 #spaces{flex:1 1 auto}#terms{max-height:30%}
@@ -230,6 +232,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-ra
 .ctx .it{display:flex;justify-content:space-between;gap:18px;padding:6px 12px;border-radius:12px;font-size:16px;color:var(--tan);cursor:pointer}
 .ctx .it.sel,.ctx .it:hover{background:var(--orange);color:#000}
 .ctx .it.off{opacity:.4;pointer-events:none}
+.ctx .hd{padding:4px 12px 6px;font-size:13px;letter-spacing:.14em;color:#9a8aa8}
+.ctx .it .ic{display:inline-grid;place-items:center;width:18px;margin-right:8px;flex:none}
+.ctx .it .lb{flex:1;display:flex;align-items:center}
+.ctx .it.chk::after{content:"✓";color:var(--orange);font-weight:700}
+.ctx .it.chk.sel::after,.ctx .it.chk:hover::after{color:#000}
 .ctx .it.dim{opacity:.55}
 .ctx .it kbd{font:inherit;font-size:12px;opacity:.75;text-transform:none;min-width:1.2em;text-align:right}
 .ctx hr{border:0;border-top:1px solid #3a2a44;margin:4px 6px}
