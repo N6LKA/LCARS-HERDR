@@ -91,7 +91,7 @@ body.side-hidden #app{grid-template-areas:"top top" "main main" "foot foot"}
 [data-state=blocked] .blk{animation:pulse .9s infinite}
 [data-state=done] :is(.tri,.mk) i:nth-child(4){animation:bar-beat 4s ease-in-out infinite}
 [data-state=idle] :is(.tri,.mk) i:nth-child(2){animation:bar-slow 6s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){.tri i,.mk i,.blk{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.tri i,.mk i,.blk,.pane.blocked{animation:none!important}}
 
 /* ── panes: a tree of splits ─────────────────────────────────────── */
 #main{grid-area:main;position:relative;min-height:0;display:flex;flex-direction:column;gap:var(--gap)}
@@ -109,7 +109,9 @@ body.no-panes #empty{display:grid}
 
 .pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:#000;border:2px solid #1c1c22;border-radius:6px;overflow:hidden;position:relative}
 .pane.focus{border-color:var(--orange)}
-.pane.blocked{border-color:var(--red);animation:pulse 1s infinite}
+.pane.blocked{border-color:var(--red);animation:alert-border 1.4s ease-in-out infinite}
+/* only the frame breathes; the terminal text stays steady so it can be read while an agent waits for you */
+@keyframes alert-border{50%{border-color:#6e2a24}}
 .pane-h{display:flex;align-items:center;gap:6px;height:28px;flex:none;padding:0 0 0 4px;background:#0c0912}
 .pane-h .cap{width:16px;height:20px;border-radius:10px 0 0 10px;background:var(--c,var(--s-live))}
 .pane-h .title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:700;color:var(--peach)}
