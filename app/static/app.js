@@ -523,7 +523,13 @@ async function copySel() {
 }
 async function pasteClip() {
   const p = P.get(S.focus); if (!p) return;
-  try { const t = await navigator.clipboard.readText(); if (t) p.term.paste(t); p.term.focus(); } catch { toast('Allow clipboard access, or use Ctrl+V', true); }
+  try {
+    for (const item of await navigator.clipboard.read()) {        // an image on the clipboard is sent as a file
+      const type = item.types.find(t => t.startsWith('image/'));
+      if (type) { const blob = await item.getType(type); return p.sendFiles([new File([blob], `clipboard.${type.split('/')[1] || 'png'}`, { type })]); }
+    }
+    const t = await navigator.clipboard.readText(); if (t) p.term.paste(t); p.term.focus();
+  } catch { toast('Allow clipboard access, or press Ctrl+V', true); }
 }
 let palSel = 0, palItems = [];
 function openPalette() {
@@ -629,6 +635,9 @@ class Pane {
     this.term.loadAddon(new WebLinksAddon.WebLinksAddon());
     try { this.term.loadAddon(new Unicode11Addon.Unicode11Addon()); this.term.unicode.activeVersion = '11'; } catch {}
     this.term.open(this.body);
+    // Ctrl+V / Cmd+V must stay a browser paste. If xterm turns it into a Ctrl+V key for the program, the program looks for
+    // an image on the SERVER's clipboard ("no image in the clipboard") and the browser never gets to paste your screenshot.
+    this.term.attachCustomKeyEventHandler(ev => !(ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === 'v'));
     this.term.onData(d => this.send({ type: 'input', data: d }));
     this.term.onBinary(b => { if (this.ws && this.ws.readyState === 1) this.ws.send(Uint8Array.from(b, c => c.charCodeAt(0))); });
     this.term.onResize(({ cols, rows }) => this.send({ type: 'resize', cols, rows }));
