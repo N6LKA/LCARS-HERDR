@@ -376,6 +376,21 @@ async def ws_term(ws: WebSocket, terminal: str, cols: int = 120, rows: int = 32,
 
 
 # ── pages ───────────────────────────────────────────────────────────────
+SW_RETIRE = """// The first LCARS Claude cached its pages with a service worker. This one removes that cache.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  for (const k of await caches.keys()) await caches.delete(k);
+  await self.registration.unregister();
+  for (const c of await self.clients.matchAll()) c.navigate(c.url);
+})()));
+"""
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return HTMLResponse(SW_RETIRE, media_type="application/javascript", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/")
 async def index():
     page = STATIC / "index.html"

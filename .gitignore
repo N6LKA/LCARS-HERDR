@@ -13,3 +13,5 @@ conversations/
 
 # runtime chat history, never commit
 conversations.json
+.devtools/
+node_modules/

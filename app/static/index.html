@@ -1,275 +1,69 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LCARS — Claude Interface</title>
-  <link rel="icon" type="image/png" href="/static/favicon.png">
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0a2244">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="LCARS">
-  <link rel="stylesheet" href="/static/lcars.css?v=54">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>LCARS · Claude</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/favicon.png">
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<link rel="stylesheet" href="/static/lcars.css">
 </head>
 <body>
-  <div id="app">
-    <!-- Header bar -->
-    <header class="lcars-header">
-      <div class="lcars-alert-badge" id="alert-badge"></div>
-      <div class="lcars-elbow-left">
-        <img src="/static/sf-logo.png" class="lcars-logo-overlay" alt="">
-      </div>
-      <div class="lcars-header-title">
-        <span class="lcars-subtitle">STARFLEET COMMAND</span>
-        <span class="lcars-title">CLAUDE CODE INTERFACE</span>
-      </div>
-      <div class="lcars-header-data">
-        <div id="data-grid" class="lcars-data-grid"></div>
-        <div class="lcars-header-status">
-          <span id="session-id-display" class="lcars-status-item lcars-session-id">NO ACTIVE SESSION</span>
-          <button id="session-copy-btn" class="lcars-session-copy-btn" onclick="copySessionId()" title="Copy session ID">&#10697;</button>
-        </div>
-      </div>
-      <div class="lcars-elbow-right"></div>
-    </header>
+<div id="app">
+  <button id="menu-btn" aria-label="Menu">≡</button>
+  <div id="elbow"><span id="brand">LCARS</span></div>
+  <header id="top">
+    <div id="tabs" role="tablist"></div>
+    <button class="pill sky" id="add-ws" title="New workspace">+ WORKSPACE</button>
+    <button class="pill peach" id="layout-btn" title="Split direction">SPLIT ▥</button>
+    <span id="conn" class="pill gray">LINKING</span>
+  </header>
 
-    <div class="lcars-body">
-      <!-- Left sidebar -->
-      <aside class="lcars-sidebar">
-        <div class="lcars-sidebar-top"></div>
+  <aside id="side">
+    <div class="rail-title">TERMINALS</div>
+    <div id="terms"></div>
+    <div class="rail-fill"></div>
+    <button class="pill orange" id="new-claude">NEW CLAUDE</button>
+    <button class="pill lilac" id="new-shell">NEW SHELL</button>
+    <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
+    <button class="pill violet" id="sound-btn">SOUND ON</button>
+    <input type="file" id="file-input" multiple hidden>
+  </aside>
 
-        <div class="lcars-sidebar-content">
-          <button class="lcars-btn lcars-btn-new" id="btn-new-chat" onclick="newConversation()">
-            NEW SESSION
-          </button>
-          <button class="lcars-btn lcars-btn-resume" onclick="showResumePanel()">
-            RESUME SESSION
-          </button>
-
-          <div id="resume-panel" class="lcars-resume-panel" style="display:none">
-            <input type="text" id="resume-input" class="lcars-resume-input"
-              placeholder="PASTE SESSION ID" autocomplete="off" spellcheck="false" />
-            <div class="lcars-resume-actions">
-              <button class="lcars-btn lcars-btn-confirm" onclick="confirmResume()">CONFIRM</button>
-              <button class="lcars-btn lcars-btn-cancel" onclick="hideResumePanel()">CANCEL</button>
-            </div>
-          </div>
-
-          <button class="lcars-btn lcars-btn-uplink" id="btn-uplink" onclick="handleUplinkBtn()">
-            UPLINK SESSION
-          </button>
-
-          <div class="lcars-section-label">SESSIONS</div>
-          <div id="conversation-list" class="lcars-conv-list"></div>
-        </div>
-
-        <div class="lcars-sidebar-spacer"></div>
-        <div class="lcars-telemetry">
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">STARDATE</span>
-              <span class="lcars-telem-value" id="telem-stardate">—</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">UPTIME</span>
-              <span class="lcars-telem-value" id="telem-uptime">00:00:00</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">SESSIONS</span>
-              <span class="lcars-telem-value" id="telem-sessions">0</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">MESSAGES</span>
-              <span class="lcars-telem-value" id="telem-msgs">0</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">CONTEXT</span>
-              <span class="lcars-telem-value" id="telem-context">—</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">TOKENS IN</span>
-              <span class="lcars-telem-value" id="telem-tokens-in">—</span>
-            </div>
-            <div class="lcars-telem-row">
-              <span class="lcars-telem-label">TOKENS OUT</span>
-              <span class="lcars-telem-value" id="telem-tokens-out">—</span>
-            </div>
-          </div>
-        <button class="lcars-sidebar-block lcars-block-coral" id="btn-auto-auth" onclick="toggleAutoAuth()">AUTH: OFF</button>
-        <button class="lcars-sidebar-block" id="custom-btn-0" onclick="fireCustomBtn(0)">BUTTON 1</button>
-        <button class="lcars-sidebar-block" id="custom-btn-1" onclick="fireCustomBtn(1)">BUTTON 2</button>
-        <button class="lcars-sidebar-block" id="custom-btn-2" onclick="fireCustomBtn(2)">PUSH GITHUB</button>
-        <button class="lcars-sidebar-block lcars-block-tall" id="custom-btn-3" onclick="fireCustomBtn(3)">MEMPALACE</button>
-        <button class="lcars-config-gear" onclick="openButtonSettings()" title="Configure buttons">&#9881;</button>
-      </aside>
-
-      <!-- Main chat area -->
-      <main class="lcars-main">
-        <div id="messages" class="lcars-messages">
-          <div class="lcars-scan-line"></div>
-        </div>
-
-        <!-- Thinking indicator -->
-        <div id="thinking-bar" class="lcars-thinking-bar" style="display:none">
-          <span class="lcars-thinking-label">PROCESSING</span>
-          <div class="lcars-thinking-dots"><span></span><span></span><span></span></div>
-          <span id="thinking-tool" class="lcars-thinking-tool"></span>
-        </div>
-
-        <!-- Context limit warning -->
-        <div id="context-warning" class="lcars-context-warning" style="display:none"></div>
-
-        <!-- Allow-all-session indicator -->
-        <div id="session-allow-indicator" class="lcars-session-allow-bar" style="display:none"
-             title="Click to revoke auto-authorization" onclick="revokeSessionAllow()">
-          <span class="lcars-session-allow-icon">&#9889;</span>
-          AUTO-AUTH ACTIVE — ALL TOOLS AUTHORIZED THIS SESSION
-          <span class="lcars-session-allow-revoke">&#x2715; REVOKE</span>
-        </div>
-
-        <!-- Image previews -->
-        <div id="image-tray" class="lcars-image-tray" style="display:none"></div>
-
-        <!-- Queue indicator -->
-        <div id="queue-indicator" class="lcars-queue-indicator" style="display:none">
-          <span id="queue-count">0</span> QUEUED
-        </div>
-
-        <!-- Input area -->
-        <div class="lcars-input-area">
-          <div class="lcars-input-left"></div>
-          <div class="lcars-input-wrapper">
-            <div class="lcars-resize-handle" id="resize-handle"></div>
-            <textarea
-              id="message-input"
-              class="lcars-textarea"
-              placeholder="ENTER MESSAGE — Alt+Enter for new line — Ctrl+V to paste image"
-              rows="3"
-            ></textarea>
-          </div>
-          <button class="lcars-send-btn" id="send-btn">
-            TRANSMIT
-          </button>
-        </div>
-      </main>
-
-      <!-- Right panel -->
-      <aside class="lcars-right-panel" id="right-panel"></aside>
+  <main id="main">
+    <div id="panes"></div>
+    <div id="empty">
+      <h2>NO TERMINALS IN THIS WORKSPACE</h2>
+      <p>Start a new Claude session, or pick a running terminal from the list.</p>
     </div>
-
-    <!-- Footer bar -->
-    <footer class="lcars-footer">
-      <div class="lcars-footer-left"></div>
-      <div class="lcars-footer-text">
-        <div class="lcars-footer-credit">
-          <span>LCARS CLAUDE CODE V1.0</span>
-        </div>
-        <div class="lcars-footer-bars">
-          <div class="lcars-fbar">
-            <span class="lcars-fbar-label">NEURAL LOAD</span><span class="lcars-fbar-sub">(CPU)</span>
-            <div class="lcars-fbar-track"><div class="lcars-fbar-fill" id="fbar-temp"></div></div>
-            <span class="lcars-fbar-val" id="fbar-temp-val">--</span>
-          </div>
-          <div class="lcars-fbar">
-            <span class="lcars-fbar-label">MEMORY CORE</span><span class="lcars-fbar-sub">(RAM)</span>
-            <div class="lcars-fbar-track"><div class="lcars-fbar-fill" id="fbar-power"></div></div>
-            <span class="lcars-fbar-val" id="fbar-power-val">--</span>
-          </div>
-          <div class="lcars-fbar">
-            <span class="lcars-fbar-label">SENSOR ARRAY</span>
-            <div class="lcars-fbar-track"><div class="lcars-fbar-fill" id="fbar-sensor"></div></div>
-            <span class="lcars-fbar-val" id="fbar-sensor-val">--</span>
-          </div>
-        </div>
-      </div>
-      <div class="lcars-footer-right"></div>
-    </footer>
-  </div>
-
-  <!-- Permission request modal -->
-  <div id="perm-overlay" class="lcars-perm-overlay" style="display:none">
-    <div class="lcars-perm-modal">
-      <div class="lcars-perm-header">
-        <span class="lcars-perm-icon">&#128274;</span>
-        AUTHORIZATION REQUIRED
-      </div>
-      <div class="lcars-perm-body">
-        <div class="lcars-perm-label">TOOL</div>
-        <div class="lcars-perm-tool-name" id="perm-tool-name"></div>
-        <div class="lcars-perm-label">TARGET</div>
-        <div class="lcars-perm-detail" id="perm-detail"></div>
-      </div>
-      <div class="lcars-perm-actions">
-        <button class="lcars-btn lcars-btn-deny-perm" onclick="respondToPermission('deny')">DENY</button>
-        <button class="lcars-btn lcars-btn-authorize" onclick="respondToPermission('allow')">AUTHORIZE</button>
-        <button class="lcars-btn lcars-btn-allow-all" onclick="respondToPermission('allow', true)">ALLOW ALL SESSION</button>
-      </div>
+    <div id="keybar" aria-label="Touch keys">
+      <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
+      <button data-k="ctrl-c">^C</button><button data-k="up">▲</button><button data-k="down">▼</button>
+      <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="enter">⏎</button>
     </div>
-  </div>
+  </main>
 
-  <!-- Button settings modal -->
-  <div id="btn-settings-overlay" class="lcars-btn-settings-overlay" style="display:none">
-    <div class="lcars-btn-settings-modal">
-      <div class="lcars-btn-settings-hdr">&#9881; BUTTON CONFIGURATION</div>
-      <div class="lcars-btn-settings-body">
-        <div class="lcars-cfg-section">
-          <div class="lcars-cfg-section-title">BUTTON 1</div>
-          <label class="lcars-cfg-label">LABEL</label>
-          <input id="cfg-label-0" type="text" class="lcars-cfg-input" maxlength="20">
-          <label class="lcars-cfg-label">COMMAND</label>
-          <textarea id="cfg-cmd-0" class="lcars-cfg-textarea" rows="3"></textarea>
-          <label class="lcars-cfg-label">COLOR</label>
-          <div class="lcars-color-row" id="cfg-colors-0"></div>
-        </div>
-        <div class="lcars-cfg-section">
-          <div class="lcars-cfg-section-title">BUTTON 2</div>
-          <label class="lcars-cfg-label">LABEL</label>
-          <input id="cfg-label-1" type="text" class="lcars-cfg-input" maxlength="20">
-          <label class="lcars-cfg-label">COMMAND</label>
-          <textarea id="cfg-cmd-1" class="lcars-cfg-textarea" rows="3"></textarea>
-          <label class="lcars-cfg-label">COLOR</label>
-          <div class="lcars-color-row" id="cfg-colors-1"></div>
-        </div>
-        <div class="lcars-cfg-section">
-          <div class="lcars-cfg-section-title">BUTTON 3</div>
-          <label class="lcars-cfg-label">LABEL</label>
-          <input id="cfg-label-2" type="text" class="lcars-cfg-input" maxlength="20">
-          <label class="lcars-cfg-label">COMMAND</label>
-          <textarea id="cfg-cmd-2" class="lcars-cfg-textarea" rows="3"></textarea>
-          <label class="lcars-cfg-label">COLOR</label>
-          <div class="lcars-color-row" id="cfg-colors-2"></div>
-        </div>
-        <div class="lcars-cfg-section">
-          <div class="lcars-cfg-section-title">BUTTON 4</div>
-          <label class="lcars-cfg-label">LABEL</label>
-          <input id="cfg-label-3" type="text" class="lcars-cfg-input" maxlength="20">
-          <label class="lcars-cfg-label">COMMAND</label>
-          <textarea id="cfg-cmd-3" class="lcars-cfg-textarea" rows="3"></textarea>
-          <label class="lcars-cfg-label">COLOR</label>
-          <div class="lcars-color-row" id="cfg-colors-3"></div>
-        </div>
-      </div>
-      <div class="lcars-cfg-audio">
-        <div class="lcars-cfg-section-title">AUDIO VOLUME</div>
-        <div class="lcars-cfg-audio-row">
-          <span class="lcars-cfg-vol-label">MUTE</span>
-          <input type="range" id="cfg-volume" min="0" max="1" step="0.05" class="lcars-cfg-slider"
-            oninput="document.getElementById('cfg-volume-val').textContent = Math.round(this.value*100)+'%'">
-          <span class="lcars-cfg-vol-label">MAX</span>
-          <span id="cfg-volume-val" class="lcars-cfg-vol-val">25%</span>
-        </div>
-      </div>
-      <div class="lcars-btn-settings-actions">
-        <button class="lcars-btn lcars-btn-cancel" onclick="closeButtonSettings()">CANCEL</button>
-        <button class="lcars-btn lcars-btn-confirm" onclick="saveButtonSettings()">SAVE</button>
-      </div>
-    </div>
-  </div>
+  <footer id="foot">
+    <span id="f-core">CORE —</span><span id="f-counts"></span><span class="grow"></span><span id="f-clock"></span>
+  </footer>
+</div>
 
-  <script src="/static/app.js?v=54"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    }
-  </script>
+<dialog id="new-dlg">
+  <form method="dialog" id="new-form">
+    <h3 id="new-title">NEW SESSION</h3>
+    <label>NAME (optional)<input id="new-name" maxlength="32" pattern="[a-z0-9][a-z0-9_.\-]*" placeholder="e.g. homelab"></label>
+    <label>FOLDER<input id="new-cwd" value="/root"></label>
+    <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" value="ok">ENGAGE</button></div>
+  </form>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/addon-fit.js"></script>
+<script src="/static/vendor/addon-web-links.js"></script>
+<script src="/static/vendor/addon-unicode11.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
