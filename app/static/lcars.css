@@ -51,9 +51,9 @@ body.side-hidden #side-show{display:grid}
 .pill{border-radius:0 16px 16px 0;padding:0 16px;font-weight:700;font-size:16px;min-height:34px;flex:none}
 #top .pill{align-self:stretch}
 #tab-add{padding:0 16px;font-size:22px;line-height:1;background:var(--orange)}
-#topbar-fill{flex:1;min-width:16px;background:var(--violet);display:flex;align-items:center;justify-content:flex-end;padding:0 16px;color:#000;font-weight:700;font-size:16px;letter-spacing:.14em;overflow:hidden;white-space:nowrap}
-#top-info{margin-right:auto}
-.tbtn{background:var(--sky);color:#000;font-weight:700;font-size:15px;letter-spacing:.1em;height:30px;padding:0 14px;margin-left:6px;border-radius:0}
+#topbar-fill{flex:1;min-width:16px;display:flex;align-items:stretch;gap:4px;color:#000;font-weight:700;font-size:16px;letter-spacing:.14em;overflow:hidden;white-space:nowrap}
+#top-info{flex:1;min-width:0;background:var(--violet);display:flex;align-items:center;justify-content:flex-start;padding:0 16px;overflow:hidden;text-overflow:ellipsis}
+.tbtn{background:var(--sky);color:#000;font-weight:700;font-size:15px;letter-spacing:.1em;height:auto;padding:0 16px;margin:0;border-radius:0;display:flex;align-items:center}
 .tbtn:hover{filter:brightness(1.12)}
 .tbtn.on{background:var(--orange)}
 #top-cap{width:26px;background:var(--violet);border-radius:0 18px 18px 0;flex:none}
