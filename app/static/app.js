@@ -1,24 +1,32 @@
 'use strict';
-/* LCARS Claude front end: workspaces of live terminals served by herdr-core. */
+/* LCARS Claude front end: spaces of tabs of split panes, each pane a live herdr-core terminal.
+   The model, commands, shortcuts and menus follow the Herdr desktop app (Apache-2.0, herdrdev/herdr-app). */
 
 const $ = (s, r = document) => r.querySelector(s);
 const uid = () => Math.random().toString(36).slice(2, 9);
+const DOC = new URLSearchParams(location.search).get('doc') || 'lcars-web';
 const STATUS_WORD = { working: 'WORKING', blocked: 'NEEDS YOU', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
 const STATUS_COLOR = { working: 'var(--s-working)', blocked: 'var(--s-blocked)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
-const NEW_KIND = { claude: 'NEW CLAUDE SESSION', shell: 'NEW SHELL' };
+const RANK = { blocked: 4, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
+const ORDER = { blocked: 0, working: 1, done: 2, idle: 3, live: 4, ended: 5 };
+const SPACE_COLORS = ['var(--tan)', 'var(--lilac)', 'var(--peach)', 'var(--sky)', 'var(--violet)', 'var(--gold)'];
+const BARS = '<i></i><i></i><i></i><i></i>';
+const TRICORDER = `<span class="tri">${BARS}</span>`;
 
 const S = {
-  terms: new Map(),     // address -> terminal facts from the core
-  ws: [],               // workspaces: {id, name, panes:[address], layout:'cols'|'rows'}
-  active: null,         // active workspace id
-  zoom: null,           // address shown alone, or null
-  focus: null,          // focused pane address
+  terms: new Map(),      // address -> terminal facts from the core
+  spaces: [],            // [{id, name|null, tab, tabs:[{id, name|null, root}]}]
+  active: null,          // active space id
+  zoomed: {},            // tab id -> zoomed pane address (this browser only)
+  focus: null,           // focused pane address
   docVersion: 0,
   sound: localStorage.getItem('lcars-sound') !== 'off',
-  prevStatus: new Map(),
-  firstSnapshot: true,
+  font: Number(localStorage.getItem('lcars-font')) || 14,
+  prev: new Map(),       // address -> last status, for alerts
+  fresh: new Map(),      // address -> time created here, so a new terminal is not pruned before the list has it
+  first: true,
 };
-const P = new Map();    // address -> Pane (only the active workspace's panes are attached)
+const P = new Map();     // address -> Pane (only panes of the active tab)
 
 // ── helpers ───────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -37,69 +45,100 @@ function toast(msg, err = false) {
   const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
-function stateOf(t) {
-  if (t.state && t.state !== 'live') return 'ended';
-  return (t.status && t.status.state) || 'live';
-}
+const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : ((t.status && t.status.state) || 'live');
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && t.labels.kind === 'claude');
-const ORDER = { blocked: 0, working: 1, done: 2, idle: 3, live: 4, ended: 5 };
-const TRICORDER = '<span class="tri"><i></i><i></i><i></i><i></i></span>';
+const labelOf = t => t.name || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
+const folderOf = t => (((t.foreground && t.foreground.cwd) || t.cwd || '').split('/').filter(Boolean).pop()) || '/';
+const cwdOf = addr => { const t = S.terms.get(addr); return t ? ((t.foreground && t.foreground.cwd) || t.cwd) : undefined; };
 function ageOf(t) {
-  const ms = Date.now() - (t.status_ms || t.created_ms || Date.now());
-  const m = Math.floor(ms / 60000);
+  const m = Math.floor((Date.now() - (t.status_ms || t.created_ms || Date.now())) / 60000);
   return m < 1 ? '<1M' : m < 60 ? `${m}M` : m < 1440 ? `${Math.floor(m / 60)}H` : `${Math.floor(m / 1440)}D`;
 }
-const labelOf = t => t.name || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
-const wsActive = () => S.ws.find(w => w.id === S.active) || S.ws[0];
+function topState(addrs) {  // the most urgent state among terminals: blocked > done > working > idle
+  let best = 'live';
+  for (const a of addrs) { const t = S.terms.get(a); if (!t) continue; const s = stateOf(t); if (RANK[s] > RANK[best]) best = s; }
+  return best;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── workspaces and layout persistence ─────────────────────────────────
+// ── the split tree ────────────────────────────────────────────────────
+// node: {t:'p', a:address}  |  {t:'s', d:'row'|'col', c:[node...], w:[weight...]}
+const leaf = a => ({ t: 'p', a });
+const isLeaf = n => n.t === 'p';
+function leaves(n, out = []) { if (!n) return out; if (isLeaf(n)) out.push(n.a); else n.c.forEach(c => leaves(c, out)); return out; }
+function insertBeside(n, addr, dir, newAddr) {
+  if (isLeaf(n)) return n.a === addr ? { t: 's', d: dir, c: [n, leaf(newAddr)], w: [1, 1] } : n;
+  const i = n.c.findIndex(c => isLeaf(c) && c.a === addr);
+  if (i >= 0 && n.d === dir) {           // same direction as the parent: add a sibling, sharing the old size
+    const c = n.c.slice(), w = n.w.slice(), half = w[i] / 2;
+    w[i] = half; c.splice(i + 1, 0, leaf(newAddr)); w.splice(i + 1, 0, half);
+    return { ...n, c, w };
+  }
+  return { ...n, c: n.c.map(x => insertBeside(x, addr, dir, newAddr)) };
+}
+function removeLeaf(n, addr) {
+  if (!n) return null;
+  if (isLeaf(n)) return n.a === addr ? null : n;
+  const c = [], w = [];
+  n.c.forEach((x, i) => { const r = removeLeaf(x, addr); if (r) { c.push(r); w.push(n.w[i]); } });
+  if (!c.length) return null;
+  return c.length === 1 ? c[0] : { ...n, c, w };
+}
+function swapLeaves(n, a, b) {
+  if (isLeaf(n)) return n.a === a ? leaf(b) : n.a === b ? leaf(a) : n;
+  return { ...n, c: n.c.map(x => swapLeaves(x, a, b)) };
+}
+const newTab = (root = null) => ({ id: uid(), name: null, root });
+const newSpace = name => { const t = newTab(); return { id: uid(), name, tabs: [t], tab: t.id }; };
+const curSpace = () => S.spaces.find(s => s.id === S.active) || S.spaces[0];
+const curTab = () => { const sp = curSpace(); return sp && (sp.tabs.find(t => t.id === sp.tab) || sp.tabs[0]); };
+function locate(addr) {
+  for (const sp of S.spaces) for (const t of sp.tabs) if (leaves(t.root).includes(addr)) return { sp, tab: t };
+  return null;
+}
+const spaceAddrs = sp => sp.tabs.flatMap(t => leaves(t.root));
+const spaceName = (sp, i) => sp.name || folderAutoName(sp) || `SPACE ${i + 1}`;
+function folderAutoName(sp) {
+  const a = sp.tabs.flatMap(t => leaves(t.root))[0]; const t = a && S.terms.get(a);
+  return t ? folderOf(t).toUpperCase() : null;
+}
+function tabName(tab, i) {
+  if (tab.name) return tab.name;
+  const a = leaves(tab.root)[0], t = a && S.terms.get(a);
+  return t ? labelOf(t).toUpperCase() : `TAB ${i + 1}`;
+}
+
+// ── persistence (a document in herdr-core, shared by every browser) ───
 async function loadLayout() {
   let doc = { version: 0, value: null };
-  try { doc = await api('/api/doc/lcars-web'); } catch (e) { toast('Layout unavailable: ' + e.message, true); }
+  try { doc = await api(`/api/doc/${encodeURIComponent(DOC)}`); } catch (e) { toast('Layout unavailable: ' + e.message, true); }
   S.docVersion = doc.version || 0;
   const v = doc.value;
-  if (v && Array.isArray(v.workspaces) && v.workspaces.length) { S.ws = v.workspaces; S.active = v.active; }
-  else { S.ws = [{ id: uid(), name: 'BRIDGE', panes: [], layout: 'cols' }]; }
-  if (!S.ws.some(w => w.id === S.active)) S.active = S.ws[0].id;
+  if (v && v.v === 2 && Array.isArray(v.spaces) && v.spaces.length) { S.spaces = v.spaces; S.active = v.active; }
+  else if (v && Array.isArray(v.workspaces) && v.workspaces.length) {       // first version: flat workspaces
+    S.spaces = v.workspaces.map(w => {
+      const addrs = w.panes || [];
+      const root = addrs.length === 0 ? null : addrs.length === 1 ? leaf(addrs[0])
+        : { t: 's', d: w.layout === 'rows' ? 'col' : 'row', c: addrs.map(leaf), w: addrs.map(() => 1) };
+      const t = newTab(root); return { id: w.id || uid(), name: w.name, tabs: [t], tab: t.id };
+    });
+    S.active = v.active;
+  } else S.spaces = [newSpace('BRIDGE')];
+  for (const sp of S.spaces) { if (!sp.tabs || !sp.tabs.length) { const t = newTab(); sp.tabs = [t]; sp.tab = t.id; } }
+  if (!S.spaces.some(s => s.id === S.active)) S.active = S.spaces[0].id;
 }
 let saveT;
 function saveLayout() {
   clearTimeout(saveT);
   saveT = setTimeout(async () => {
-    const body = () => JSON.stringify({ value: { workspaces: S.ws, active: S.active }, version: S.docVersion });
-    const put = () => api('/api/doc/lcars-web', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: body() });
+    const url = `/api/doc/${encodeURIComponent(DOC)}`;
+    const put = () => api(url, { method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: { v: 2, spaces: S.spaces, active: S.active }, version: S.docVersion }) });
     try { S.docVersion = (await put()).version; }
-    catch {
-      try { S.docVersion = (await api('/api/doc/lcars-web')).version; S.docVersion = (await put()).version; } catch {}
-    }
+    catch { try { S.docVersion = (await api(url)).version; S.docVersion = (await put()).version; } catch {} }
   }, 400);
 }
-function addPane(addr, wsId = S.active) {
-  const w = S.ws.find(x => x.id === wsId);
-  if (!w.panes.includes(addr)) w.panes.push(addr);
-  S.focus = addr; S.zoom = null; saveLayout(); render();
-}
-function removePane(addr) {
-  const w = wsActive();
-  w.panes = w.panes.filter(a => a !== addr);
-  if (S.zoom === addr) S.zoom = null;
-  if (S.focus === addr) S.focus = w.panes[0] || null;
-  saveLayout(); render();
-}
-function newWorkspace() {
-  const name = (prompt('Workspace name', `WORKSPACE ${S.ws.length + 1}`) || '').trim().slice(0, 24);
-  if (!name) return;
-  const w = { id: uid(), name: name.toUpperCase(), panes: [], layout: 'cols' };
-  S.ws.push(w); S.active = w.id; S.zoom = null; saveLayout(); render();
-}
-function closeWorkspace(id) {
-  if (S.ws.length < 2) return;
-  const w = S.ws.find(x => x.id === id);
-  if (w.panes.length && !confirm(`Close ${w.name}? Its terminals keep running.`)) return;
-  S.ws = S.ws.filter(x => x.id !== id);
-  if (S.active === id) S.active = S.ws[0].id;
-  S.zoom = null; saveLayout(); render();
-}
+const commit = () => { saveLayout(); render(); };
 
 // ── terminals ─────────────────────────────────────────────────────────
 async function refreshTerms() {
@@ -107,14 +146,24 @@ async function refreshTerms() {
   const seen = new Set();
   for (const t of data.terminals) {
     seen.add(t.address);
-    const now = stateOf(t), was = S.prevStatus.get(t.address);
-    if (!S.firstSnapshot && was !== now) statusChanged(t, was, now);
-    S.prevStatus.set(t.address, now);
-    S.terms.set(t.address, t);
+    const now = stateOf(t), was = S.prev.get(t.address);
+    if (!S.first && was !== now) statusChanged(t, was, now);
+    S.prev.set(t.address, now); S.terms.set(t.address, t);
   }
-  for (const a of [...S.terms.keys()]) if (!seen.has(a)) { S.terms.delete(a); S.prevStatus.delete(a); }
-  S.firstSnapshot = false;
+  for (const a of [...S.terms.keys()]) if (!seen.has(a)) { S.terms.delete(a); S.prev.delete(a); }
+  S.first = false;
+  prune();
   render();
+}
+function prune() {   // drop panes whose terminal is gone (ended while this page was closed)
+  const now = Date.now(); let changed = false;
+  for (const [a, ts] of S.fresh) if (now - ts > 8000) S.fresh.delete(a);
+  for (const sp of S.spaces) for (const tab of sp.tabs) {
+    for (const a of leaves(tab.root)) {
+      if (!S.terms.has(a) && !S.fresh.has(a)) { tab.root = removeLeaf(tab.root, a); changed = true; }
+    }
+  }
+  if (changed) saveLayout();
 }
 function statusChanged(t, was, now) {
   if (now === 'blocked') { play('tng_red_alert3'); toast(`${labelOf(t)} NEEDS YOU`, true); }
@@ -128,24 +177,333 @@ function play(name) {
     a.currentTime = 0; a.volume = name.includes('alert') ? 0.5 : 0.7; a.play().catch(() => {});
   } catch {}
 }
-async function startSession(kind) {
-  const dlg = $('#new-dlg');
-  $('#new-title').textContent = NEW_KIND[kind];
-  $('#new-name').value = '';
-  dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
+async function createTerminal(kind, opt = {}) {
+  const t = await post('/api/terminals', { kind, name: opt.name || undefined, cwd: opt.cwd || undefined, cols: 120, rows: 32 });
+  S.terms.set(t.address, t); S.fresh.set(t.address, Date.now());
+  return t.address;
 }
-async function createSession(kind, name, cwd) {
+async function endTerminal(addr) {
+  try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); } catch (e) { toast(e.message, true); }
+}
+const agentLive = addr => { const t = S.terms.get(addr); return !!t && isAgent(t) && stateOf(t) !== 'ended'; };
+
+// ── layout operations ─────────────────────────────────────────────────
+function focusPane(addr) {
+  if (!addr) return;
+  S.focus = addr;
+  requestAnimationFrame(() => { const p = P.get(addr); if (p) { for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); p.term.focus(); } });
+}
+function dropFromTree(addr) {      // remove a pane everywhere; an emptied tab closes if it has siblings
+  for (const sp of S.spaces) {
+    for (const tab of [...sp.tabs]) {
+      if (!leaves(tab.root).includes(addr)) continue;
+      tab.root = removeLeaf(tab.root, addr);
+      if (S.zoomed[tab.id] === addr) S.zoomed[tab.id] = null;
+      if (!tab.root && sp.tabs.length > 1) {
+        const i = sp.tabs.indexOf(tab); sp.tabs.splice(i, 1);
+        if (sp.tab === tab.id) sp.tab = (sp.tabs[i] || sp.tabs[i - 1]).id;
+      }
+    }
+  }
+  if (S.focus === addr) S.focus = leaves((curTab() || {}).root)[0] || null;
+  commit();
+}
+async function newTabWith(kind, opt = {}) {
   try {
-    const t = await post('/api/terminals', { kind, name: name || undefined, cwd: cwd || undefined, cols: 120, rows: 32 });
-    S.terms.set(t.address, t);
-    addPane(t.address);
-    refreshTerms().catch(() => {});
+    const addr = await createTerminal(kind, opt);
+    const sp = curSpace(), cur = curTab();
+    if (cur && !cur.root) cur.root = leaf(addr);          // an empty tab is filled before a new one is added
+    else { const tab = newTab(leaf(addr)); sp.tabs.push(tab); sp.tab = tab.id; }
+    S.focus = addr; commit(); focusPane(addr);
   } catch (e) { toast(e.message, true); }
 }
-async function killTerminal(addr) {
-  const t = S.terms.get(addr);
-  if (!confirm(`End ${t ? labelOf(t) : addr}? The program running in it will stop.`)) return;
-  try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); } catch (e) { toast(e.message, true); }
+async function splitPane(addr, dir, kind = 'shell') {
+  addr = addr || S.focus;
+  const loc = addr && locate(addr);
+  if (!loc) return newTabWith(kind, { cwd: cwdOf(S.focus) });
+  try {
+    const na = await createTerminal(kind, { cwd: cwdOf(addr) });
+    loc.tab.root = insertBeside(loc.tab.root, addr, dir === 'right' ? 'row' : 'col', na);
+    S.zoomed[loc.tab.id] = null; S.focus = na; commit(); focusPane(na);
+  } catch (e) { toast(e.message, true); }
+}
+async function closePane(addr) {
+  addr = addr || S.focus; if (!addr) return;
+  if (agentLive(addr) && !confirm('End this agent? The program running in it will stop.')) return;
+  dropFromTree(addr); await endTerminal(addr);
+}
+const hidePane = addr => { addr = addr || S.focus; if (addr) dropFromTree(addr); };
+function toggleZoom(addr) {
+  const tab = curTab(); addr = addr || S.focus; if (!tab || !addr) return;
+  S.zoomed[tab.id] = S.zoomed[tab.id] === addr ? null : addr; S.focus = addr; render(); focusPane(addr);
+}
+function neighbor(addr, dir) {
+  const me = P.get(addr); if (!me) return null;
+  const r = me.el.getBoundingClientRect(); let best = null;
+  for (const [a, p] of P) {
+    if (a === addr || !p.el.isConnected) continue;
+    const q = p.el.getBoundingClientRect(); if (!q.width) continue;
+    const ov = dir === 'left' || dir === 'right' ? Math.min(r.bottom, q.bottom) - Math.max(r.top, q.top) : Math.min(r.right, q.right) - Math.max(r.left, q.left);
+    const dist = dir === 'left' ? r.left - q.right : dir === 'right' ? q.left - r.right : dir === 'up' ? r.top - q.bottom : q.top - r.bottom;
+    if (ov <= 0 || dist < -4) continue;
+    const score = dist * 1000 - ov;
+    if (!best || score < best.score) best = { a, score };
+  }
+  return best && best.a;
+}
+function goDir(dir) { const n = neighbor(S.focus, dir); if (n) focusPane(n); }
+function swapDir(dir) {
+  const n = neighbor(S.focus, dir), tab = curTab(); if (!n || !tab) return;
+  tab.root = swapLeaves(tab.root, S.focus, n); commit(); focusPane(S.focus);
+}
+async function renameTab(id) {
+  const sp = curSpace(), tab = sp.tabs.find(t => t.id === (id || sp.tab)); if (!tab) return;
+  const v = await ask('RENAME TAB', tab.name || tabName(tab, sp.tabs.indexOf(tab)), 'empty restores the automatic name');
+  if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
+}
+async function renameSpace(id) {
+  const sp = S.spaces.find(s => s.id === (id || S.active)); if (!sp) return;
+  const v = await ask('RENAME SPACE', sp.name || spaceName(sp, S.spaces.indexOf(sp)), 'empty restores the automatic name');
+  if (v !== null) { sp.name = v ? v.toUpperCase() : null; commit(); }
+}
+async function closeTab(id) {
+  const sp = curSpace(), tab = sp.tabs.find(t => t.id === (id || sp.tab)); if (!tab) return;
+  const addrs = leaves(tab.root);
+  if (addrs.length && !confirm(`Close this tab and end its ${addrs.length} terminal${addrs.length > 1 ? 's' : ''}?`)) return;
+  if (sp.tabs.length > 1) { const i = sp.tabs.indexOf(tab); sp.tabs.splice(i, 1); if (sp.tab === tab.id) sp.tab = (sp.tabs[i] || sp.tabs[i - 1]).id; }
+  else tab.root = null;
+  commit(); await Promise.all(addrs.map(endTerminal));
+}
+async function closeSpace(id) {
+  const sp = S.spaces.find(s => s.id === (id || S.active)); if (!sp) return;
+  const addrs = spaceAddrs(sp);
+  if (!confirm(`Close ${spaceName(sp, S.spaces.indexOf(sp))}${addrs.length ? ` and end its ${addrs.length} terminal${addrs.length > 1 ? 's' : ''}` : ''}?`)) return;
+  S.spaces = S.spaces.filter(s => s !== sp);
+  if (!S.spaces.length) S.spaces = [newSpace('BRIDGE')];
+  if (S.active === sp.id) S.active = S.spaces[0].id;
+  commit(); await Promise.all(addrs.map(endTerminal));
+}
+function selectSpace(id) { if (S.spaces.some(s => s.id === id)) { S.active = id; S.focus = leaves((curTab() || {}).root)[0] || null; commit(); focusPane(S.focus); } }
+function selectTab(id) { const sp = curSpace(); if (sp.tabs.some(t => t.id === id)) { sp.tab = id; S.focus = leaves(curTab().root)[0] || null; commit(); focusPane(S.focus); } }
+function stepSpace(d) { const i = S.spaces.indexOf(curSpace()); selectSpace(S.spaces[(i + d + S.spaces.length) % S.spaces.length].id); }
+function stepTab(d) { const sp = curSpace(), i = sp.tabs.findIndex(t => t.id === sp.tab); selectTab(sp.tabs[(i + d + sp.tabs.length) % sp.tabs.length].id); }
+function moveInList(list, from, to) { if (from === to || from < 0 || to < 0) return; const [x] = list.splice(from, 1); list.splice(to, 0, x); }
+function agentList() {
+  return [...S.terms.values()].filter(isAgent).sort((a, b) => (ORDER[stateOf(a)] - ORDER[stateOf(b)]) || (a.created_ms - b.created_ms));
+}
+function focusAddr(addr) {
+  const loc = locate(addr);
+  if (!loc) {   // a terminal no tab shows: open it in a new tab here
+    const sp = curSpace(), tab = newTab(leaf(addr)); sp.tabs.push(tab); sp.tab = tab.id; S.focus = addr; commit(); return focusPane(addr);
+  }
+  S.active = loc.sp.id; loc.sp.tab = loc.tab.id; S.focus = addr; commit(); focusPane(addr);
+}
+function stepAgent(d) {
+  const list = agentList(); if (!list.length) return;
+  const i = list.findIndex(t => t.address === S.focus);
+  focusAddr(list[(i + d + list.length) % list.length].address);
+}
+function applyFont() {
+  localStorage.setItem('lcars-font', S.font);
+  for (const p of P.values()) { p.term.options.fontSize = S.font; p.refit(); }
+}
+
+// ── commands, key bindings ────────────────────────────────────────────
+const CMDS = new Map();
+const KEYS = [];
+const def = (id, label, run, group = 'General') => CMDS.set(id, { id, label, run, group });
+const bind = (combo, id) => KEYS.push([combo, id]);
+const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
+
+def('app.palette', 'Command palette', () => openPalette(), 'App');
+def('app.help', 'Keyboard shortcuts', () => openHelp(), 'App');
+def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
+def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font + 1); applyFont(); }, 'App');
+def('app.zoom_out', 'Smaller terminal text', () => { S.font = Math.max(9, S.font - 1); applyFont(); }, 'App');
+def('app.zoom_reset', 'Reset terminal text size', () => { S.font = 14; applyFont(); }, 'App');
+def('sound.toggle', 'Turn sound on or off', () => toggleSound(), 'App');
+def('space.new', 'New space', async () => { const n = await ask('NEW SPACE', '', 'name (optional)'); if (n === null) return; const sp = newSpace(n ? n.toUpperCase() : null); S.spaces.push(sp); S.active = sp.id; S.focus = null; commit(); }, 'Spaces');
+def('space.rename', 'Rename space', id => renameSpace(typeof id === 'string' ? id : undefined), 'Spaces');
+def('space.close', 'Close space', id => closeSpace(typeof id === 'string' ? id : undefined), 'Spaces');
+def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
+def('space.prev', 'Previous space', () => stepSpace(-1), 'Spaces');
+def('tab.new', 'New tab (shell)', () => newTabWith('shell', { cwd: cwdOf(S.focus) }), 'Tabs');
+def('tab.new_claude', 'New tab (Claude)', () => newTabWith('claude', { cwd: cwdOf(S.focus) }), 'Tabs');
+def('tab.rename', 'Rename tab', id => renameTab(typeof id === 'string' ? id : undefined), 'Tabs');
+def('tab.close', 'Close tab', id => closeTab(typeof id === 'string' ? id : undefined), 'Tabs');
+def('tab.next', 'Next tab', () => stepTab(1), 'Tabs');
+def('tab.prev', 'Previous tab', () => stepTab(-1), 'Tabs');
+def('pane.split_right', 'Split right', a => splitPane(typeof a === 'string' ? a : undefined, 'right'), 'Panes');
+def('pane.split_down', 'Split down', a => splitPane(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
+def('pane.split_right_claude', 'Split right with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'right', 'claude'), 'Panes');
+def('pane.split_down_claude', 'Split down with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'down', 'claude'), 'Panes');
+def('pane.zoom', 'Zoom pane or show all panes', a => toggleZoom(typeof a === 'string' ? a : undefined), 'Panes');
+def('pane.close', 'Close pane (ends its terminal)', a => closePane(typeof a === 'string' ? a : undefined), 'Panes');
+def('pane.hide', 'Hide pane (keeps running)', a => hidePane(typeof a === 'string' ? a : undefined), 'Panes');
+for (const d of ['left', 'right', 'up', 'down']) {
+  def(`pane.go_${d}`, `Focus pane ${d}`, () => goDir(d), 'Panes');
+  def(`pane.swap_${d}`, `Swap pane ${d}`, () => swapDir(d), 'Panes');
+}
+def('agent.next', 'Next agent', () => stepAgent(1), 'Agents');
+def('agent.prev', 'Previous agent', () => stepAgent(-1), 'Agents');
+def('terminal.copy', 'Copy selection', () => copySel(), 'Terminal');
+def('terminal.paste', 'Paste', () => pasteClip(), 'Terminal');
+for (let n = 1; n <= 9; n++) {
+  def(`space.select_${n}`, `Go to space ${n}`, () => { const sp = S.spaces[n - 1]; if (sp) selectSpace(sp.id); }, 'Spaces');
+  def(`tab.select_${n}`, `Go to tab ${n}`, () => { const t = curSpace().tabs[n - 1]; if (t) selectTab(t.id); }, 'Tabs');
+  bind(`alt+${n}`, `space.select_${n}`); bind(`ctrl+${n}`, `tab.select_${n}`); bind(`ctrl+alt+${n}`, `tab.select_${n}`);
+}
+// Herdr's default keys, plus ctrl+alt twins where a browser keeps the original (new/close tab, new space).
+[['alt+h', 'pane.go_left'], ['alt+j', 'pane.go_down'], ['alt+k', 'pane.go_up'], ['alt+l', 'pane.go_right'], ['alt+left', 'pane.go_left'], ['alt+right', 'pane.go_right'],
+ ['alt+shift+h', 'pane.swap_left'], ['alt+shift+j', 'pane.swap_down'], ['alt+shift+k', 'pane.swap_up'], ['alt+shift+l', 'pane.swap_right'],
+ ['ctrl+equal', 'app.zoom_in'], ['ctrl+plus', 'app.zoom_in'], ['ctrl+shift+plus', 'app.zoom_in'], ['ctrl+minus', 'app.zoom_out'], ['ctrl+0', 'app.zoom_reset'],
+ ['ctrl+pagedown', 'tab.next'], ['ctrl+tab', 'tab.next'], ['alt+rbracket', 'tab.next'], ['ctrl+pageup', 'tab.prev'], ['ctrl+shift+tab', 'tab.prev'], ['alt+lbracket', 'tab.prev'],
+ ['ctrl+shift+pagedown', 'space.next'], ['ctrl+shift+pageup', 'space.prev'], ['alt+down', 'agent.next'], ['alt+up', 'agent.prev'],
+ ['ctrl+shift+question', 'app.help'], ['ctrl+question', 'app.help'], ['f1', 'app.help'],
+ ['ctrl+shift+b', 'layout.toggle_sidebar'], ['ctrl+shift+n', 'space.new'], ['ctrl+alt+n', 'space.new'],
+ ['ctrl+shift+t', 'tab.new'], ['ctrl+alt+t', 'tab.new'], ['ctrl+shift+w', 'tab.close'], ['ctrl+alt+w', 'tab.close'],
+ ['ctrl+shift+p', 'app.palette'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
+ ['ctrl+shift+x', 'pane.close'], ['ctrl+shift+z', 'pane.zoom'], ['f2', 'tab.rename'], ['shift+f2', 'space.rename'], ['ctrl+shift+c', 'terminal.copy'],
+].forEach(([k, c]) => bind(k, c));
+const KEYNAME = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', PageUp: 'pageup', PageDown: 'pagedown', Tab: 'tab', Escape: 'esc', Enter: 'enter', ' ': 'space',
+  '-': 'minus', '+': 'plus', '=': 'equal', '[': 'lbracket', ']': 'rbracket', '/': 'slash', '?': 'question', ',': 'comma', F1: 'f1', F2: 'f2' };
+function comboOf(e) {
+  let k = e.code && /^(Key|Digit)[A-Z0-9]$/.test(e.code) ? e.code.slice(-1).toLowerCase() : e.key;
+  k = KEYNAME[k] || k.toLowerCase();
+  if (['control', 'alt', 'shift', 'meta'].includes(k)) return '';
+  return [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift', e.metaKey && 'meta', k].filter(Boolean).join('+');
+}
+const SHOW = { equal: '=', plus: '+', minus: '−', lbracket: '[', rbracket: ']', question: '?', slash: '/', pagedown: 'PgDn', pageup: 'PgUp', left: '←', right: '→', up: '↑', down: '↓' };
+const fmtKey = c => c.split('+').map(p => SHOW[p] || (p.length > 1 ? p[0].toUpperCase() + p.slice(1) : p.toUpperCase())).join('+');
+const hintOf = id => { const k = KEYS.find(([, c]) => c === id); return k ? fmtKey(k[0]) : ''; };
+const modalOpen = () => !!document.querySelector('dialog[open], .ctx');
+document.addEventListener('keydown', e => {
+  if (e.isComposing || modalOpen()) return;
+  const id = (KEYS.find(([k]) => k === comboOf(e)) || [])[1];
+  if (!id) return;
+  e.preventDefault(); e.stopPropagation();
+  run(id);
+}, true);
+
+// ── dialogs, context menu, palette, help ──────────────────────────────
+function ask(title, value = '', placeholder = '') {
+  return new Promise(resolve => {
+    const d = $('#ask-dlg'), i = $('#ask-input');
+    $('#ask-title').textContent = title; i.value = value; i.placeholder = placeholder; d.returnValue = '';
+    d.onclose = () => resolve(d.returnValue === 'ok' ? i.value.trim() : null);
+    d.showModal(); i.select();
+  });
+}
+let ctxEl = null, ctxSel = -1;
+function closeMenu() { if (ctxEl) { ctxEl.remove(); ctxEl = null; ctxSel = -1; document.removeEventListener('keydown', menuKeys, true); } }
+function menuKeys(e) {
+  const items = [...ctxEl.querySelectorAll('.it:not(.off)')];
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); e.stopPropagation();
+    ctxSel = (ctxSel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items.forEach((x, i) => x.classList.toggle('sel', i === ctxSel));
+  } else if (e.key === 'Enter' && ctxSel >= 0) { e.preventDefault(); e.stopPropagation(); items[ctxSel].click(); }
+}
+function showMenu(x, y, items) {
+  closeMenu();
+  const m = (ctxEl = document.createElement('div')); m.className = 'ctx';
+  for (const it of items) {
+    if (it === '-') { m.appendChild(document.createElement('hr')); continue; }
+    if (it.show === false) continue;
+    const row = document.createElement('div'); row.className = 'it' + (it.off ? ' off' : '');
+    const hint = it.cmd ? hintOf(it.cmd) : '';
+    row.innerHTML = '<span></span>' + (hint ? '<kbd></kbd>' : '');
+    $('span', row).textContent = it.label; if (hint) $('kbd', row).textContent = hint;
+    row.onclick = () => { closeMenu(); if (it.fn) it.fn(); else run(it.cmd, it.arg); };
+    m.appendChild(row);
+  }
+  document.body.appendChild(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  document.addEventListener('keydown', menuKeys, true);
+}
+document.addEventListener('mousedown', e => { if (ctxEl && !ctxEl.contains(e.target)) closeMenu(); }, true);
+window.addEventListener('blur', closeMenu);
+
+function paneMenu(e, addr) {
+  if (e.shiftKey) return;                       // shift+right-click keeps the browser's own menu
+  e.preventDefault(); setFocusQuiet(addr);
+  const p = P.get(addr), sel = p && p.term.hasSelection();
+  showMenu(e.clientX, e.clientY, [
+    { label: 'Copy', cmd: 'terminal.copy', off: !sel }, { label: 'Paste', cmd: 'terminal.paste' }, '-',
+    { label: 'Split right', cmd: 'pane.split_right', arg: addr }, { label: 'Split down', cmd: 'pane.split_down', arg: addr },
+    { label: 'Split right with Claude', cmd: 'pane.split_right_claude', arg: addr }, { label: 'Split down with Claude', cmd: 'pane.split_down_claude', arg: addr },
+    { label: S.zoomed[(curTab() || {}).id] === addr ? 'Show all panes' : 'Zoom', cmd: 'pane.zoom', arg: addr }, '-',
+    { label: 'Hide pane (keeps running)', cmd: 'pane.hide', arg: addr }, { label: 'Close pane', cmd: 'pane.close', arg: addr },
+  ]);
+}
+function tabMenu(e, id) {
+  e.preventDefault();
+  showMenu(e.clientX, e.clientY, [
+    { label: 'Rename', cmd: 'tab.rename', arg: id }, { label: 'New tab', cmd: 'tab.new' }, { label: 'New Claude tab', cmd: 'tab.new_claude' }, '-',
+    { label: 'Close', cmd: 'tab.close', arg: id },
+  ]);
+}
+function spaceMenu(e, id) {
+  e.preventDefault();
+  showMenu(e.clientX, e.clientY, [
+    { label: 'Rename', cmd: 'space.rename', arg: id }, { label: 'New space', cmd: 'space.new' }, '-', { label: 'Close', cmd: 'space.close', arg: id },
+  ]);
+}
+const setFocusQuiet = addr => { S.focus = addr; for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); };
+async function copySel() {
+  const p = P.get(S.focus); const t = p && p.term.getSelection();
+  if (!t) return toast('Nothing selected');
+  try { await navigator.clipboard.writeText(t); toast('COPIED'); } catch { toast('Copy needs a secure page (https)', true); }
+}
+async function pasteClip() {
+  const p = P.get(S.focus); if (!p) return;
+  try { const t = await navigator.clipboard.readText(); if (t) p.term.paste(t); p.term.focus(); } catch { toast('Allow clipboard access, or use Ctrl+V', true); }
+}
+let palSel = 0, palItems = [];
+function openPalette() {
+  const d = $('#pal-dlg'), input = $('#pal-input'); input.value = ''; fillPalette(''); d.showModal(); input.focus();
+}
+function fillPalette(q) {
+  q = q.toLowerCase().trim(); const list = $('#pal-list'); list.textContent = '';
+  palItems = [...CMDS.values()].filter(c => q
+    ? (c.label.toLowerCase().includes(q) || c.id.includes(q) || c.group.toLowerCase().includes(q))
+    : !/\.select_\d$/.test(c.id));
+  palSel = 0;
+  palItems.forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'pal-item' + (i === 0 ? ' sel' : '');
+    row.innerHTML = '<span></span><kbd></kbd>'; $('span', row).textContent = `${c.group}: ${c.label}`; $('kbd', row).textContent = hintOf(c.id);
+    row.onclick = () => runPalette(i); list.appendChild(row);
+  });
+}
+function runPalette(i) { const c = palItems[i]; if (!c) return; $('#pal-dlg').close(); setTimeout(() => run(c.id), 30); }
+function movePal(d) {
+  const rows = [...$('#pal-list').children]; if (!rows.length) return;
+  rows[palSel].classList.remove('sel'); palSel = (palSel + d + rows.length) % rows.length;
+  rows[palSel].classList.add('sel'); rows[palSel].scrollIntoView({ block: 'nearest' });
+}
+function openHelp() {
+  const body = $('#help-body'); body.textContent = '';
+  const groups = new Map();
+  for (const c of CMDS.values()) {
+    const keys = KEYS.filter(([, id]) => id === c.id).map(([k]) => fmtKey(k));
+    if (!keys.length) continue;
+    if (!groups.has(c.group)) groups.set(c.group, []);
+    groups.get(c.group).push([c.label, keys.slice(0, 3).join('   ')]);
+  }
+  for (const [g, rows] of groups) {
+    const h = document.createElement('h4'); h.textContent = g.toUpperCase(); body.appendChild(h);
+    for (const [label, keys] of rows) {
+      const a = document.createElement('span'), b = document.createElement('kbd'); a.textContent = label; b.textContent = keys; body.append(a, b);
+    }
+  }
+  const note = document.createElement('h4'); note.textContent = 'NOTES'; body.appendChild(note);
+  const n1 = document.createElement('span'); n1.style.gridColumn = '1/-1'; n1.style.textTransform = 'none';
+  n1.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves; the Ctrl+Alt twins work everywhere, and the originals work in an installed app window. Right-click a pane for its menu; Shift+right-click for the browser menu.';
+  body.appendChild(n1);
+  $('#help-dlg').showModal();
 }
 
 // ── panes: one xterm.js attached to one core terminal ─────────────────
@@ -154,38 +512,40 @@ const XTERM_THEME = {
   black: '#000000', red: '#ff5544', green: '#7fd17f', yellow: '#ffcc66', blue: '#5599ff', magenta: '#cc99cc', cyan: '#99ccff', white: '#ffcc99',
   brightBlack: '#666688', brightRed: '#ff7766', brightGreen: '#9be89b', brightYellow: '#ffe08a', brightBlue: '#99bbff', brightMagenta: '#e0b0e0', brightCyan: '#bde0ff', brightWhite: '#ffffff',
 };
+const hasFiles = ev => ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes('Files');
 
 class Pane {
   constructor(addr) {
-    this.addr = addr; this.ws = null; this.dead = false; this.retry = 0;
+    this.addr = addr; this.ws = null; this.dead = false; this.ended = false; this.retry = 0;
     this.el = document.createElement('div');
-    this.el.className = 'pane';
+    this.el.className = 'pane'; this.el.dataset.addr = addr;
     this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span>${TRICORDER}<span class="st"></span>
-      <button data-a="zoom" title="Fill the workspace">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
-      <button data-a="close" class="close" title="Remove from this workspace (keeps running)">✕</button></div>
+      <button data-a="split_right" title="Split right">▥</button><button data-a="split_down" title="Split down">▤</button>
+      <button data-a="zoom" title="Zoom">⤢</button><button data-a="file" title="Send a file">FILE</button>
+      <button data-a="close" class="close" title="Close pane (ends its terminal)">✕</button></div>
       <div class="pane-b"><span class="pane-msg">RECONNECTING</span></div>`;
     this.body = $('.pane-b', this.el);
     this.term = new Terminal({
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: 14, lineHeight: 1.05,
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: S.font, lineHeight: 1.05,
       cursorBlink: true, scrollback: 5000, theme: XTERM_THEME, allowProposedApi: true, macOptionIsMeta: true,
     });
     this.fit = new FitAddon.FitAddon();
     this.term.loadAddon(this.fit);
     this.term.loadAddon(new WebLinksAddon.WebLinksAddon());
-    try { const u = new Unicode11Addon.Unicode11Addon(); this.term.loadAddon(u); this.term.unicode.activeVersion = '11'; } catch {}
+    try { this.term.loadAddon(new Unicode11Addon.Unicode11Addon()); this.term.unicode.activeVersion = '11'; } catch {}
     this.term.open(this.body);
     this.term.onData(d => this.send({ type: 'input', data: d }));
     this.term.onBinary(b => { if (this.ws && this.ws.readyState === 1) this.ws.send(Uint8Array.from(b, c => c.charCodeAt(0))); });
     this.term.onResize(({ cols, rows }) => this.send({ type: 'resize', cols, rows }));
     this.ro = new ResizeObserver(() => this.refit());
     this.ro.observe(this.body);
-    this.el.addEventListener('mousedown', () => setFocus(addr), true);
-    this.el.addEventListener('focusin', () => setFocus(addr));
+    this.el.addEventListener('mousedown', () => setFocusQuiet(addr), true);
+    this.el.addEventListener('focusin', () => setFocusQuiet(addr));
+    this.el.addEventListener('contextmenu', ev => paneMenu(ev, addr));
     this.el.addEventListener('click', ev => {
-      const a = ev.target.dataset && ev.target.dataset.a;
-      if (a === 'close') removePane(addr);
-      else if (a === 'zoom') { S.zoom = S.zoom === addr ? null : addr; render(); }
-      else if (a === 'file') { setFocus(addr); $('#file-input').click(); }
+      const a = ev.target.dataset && ev.target.dataset.a; if (!a) return;
+      if (a === 'file') { setFocusQuiet(addr); $('#file-input').click(); }
+      else run(a === 'close' ? 'pane.close' : a === 'zoom' ? 'pane.zoom' : `pane.${a}`, addr);
     });
     this.body.addEventListener('paste', ev => this.onPaste(ev), true);
     ['dragenter', 'dragover'].forEach(n => this.el.addEventListener(n, ev => { if (hasFiles(ev)) { ev.preventDefault(); this.el.classList.add('drop'); } }));
@@ -193,7 +553,7 @@ class Pane {
     this.el.addEventListener('drop', ev => { if (hasFiles(ev)) { ev.preventDefault(); this.sendFiles([...ev.dataTransfer.files]); } });
     this.connect();
   }
-  refit() { try { if (this.el.offsetParent) this.fit.fit(); } catch {} }
+  refit() { try { if (this.el.isConnected && this.el.offsetParent) this.fit.fit(); } catch {} }
   send(msg) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(msg)); }
   connect() {
     if (this.dead) return;
@@ -207,13 +567,11 @@ class Pane {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
         if (m.type === 'closed') {
-          this.ended = true;
-          const r = m.reason || {};
+          this.ended = true; const r = m.reason || {};
           this.term.write('\r\n\x1b[38;5;208m[ terminal ended ]\x1b[0m\r\n');
           // A clean exit or an end-it-yourself closes the pane; a crash stays so its last output can be read.
-          if (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code)) setTimeout(() => removePane(this.addr), 600);
-        }
-        else if (m.type === 'error') { this.term.write(`\r\n\x1b[31m[ ${m.error} ]\x1b[0m\r\n`); this.ended = true; }
+          if (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code)) setTimeout(() => dropFromTree(this.addr), 600);
+        } else if (m.type === 'error') { this.term.write(`\r\n\x1b[31m[ ${m.error} ]\x1b[0m\r\n`); this.ended = true; }
         return;
       }
       this.term.write(new Uint8Array(ev.data));
@@ -232,7 +590,7 @@ class Pane {
         const r = await fetch('/api/terminals/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
         const { path } = await r.json();
-        this.term.paste(path + ' ');   // bracketed paste, so Claude sees it as an attached file
+        this.term.paste(path + ' ');   // bracketed paste, so Claude sees an attached file
         toast(`SENT ${f.name || 'IMAGE'}`);
       } catch (e) { toast(`Upload failed: ${e.message}`, true); }
     }
@@ -249,9 +607,9 @@ class Pane {
     this.el.style.setProperty('--c', STATUS_COLOR[st]);
     this.el.classList.toggle('blocked', st === 'blocked');
     this.el.dataset.state = st;
-    $('.title', this.el).textContent = t ? `${labelOf(t)} · ${this.addr}${t.cwd ? ' · ' + t.cwd : ''}` : this.addr;
+    $('.title', this.el).textContent = t ? `${labelOf(t)} · ${folderOf(t)}` : this.addr;
     $('.st', this.el).textContent = STATUS_WORD[st];
-    $('[data-a=zoom]', this.el).textContent = S.zoom === this.addr ? 'RESTORE' : 'ZOOM';
+    const tab = curTab(); $('[data-a=zoom]', this.el).title = tab && S.zoomed[tab.id] === this.addr ? 'Show all panes' : 'Zoom';
   }
   destroy() {
     this.dead = true; this.ro.disconnect();
@@ -259,151 +617,202 @@ class Pane {
     this.term.dispose(); this.el.remove();
   }
 }
-const hasFiles = ev => ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes('Files');
-function setFocus(addr) {
-  if (S.focus === addr && P.get(addr) && P.get(addr).el.classList.contains('focus')) return;
-  S.focus = addr;
-  for (const [a, p] of P) p.el.classList.toggle('focus', a === addr);
-}
 
 // ── rendering ─────────────────────────────────────────────────────────
-function render() {
-  renderTabs(); renderTerms(); renderAgents(); renderPanes(); renderFoot();
-}
+function render() { renderTabs(); renderSpaces(); renderAgents(); renderUnplaced(); renderPanes(); renderFoot(); }
+
+function stateMark(state) { return `<span class="mk" data-state="${state}" style="--c:${STATUS_COLOR[state]}">${BARS}</span>`; }
 function renderTabs() {
-  const box = $('#tabs'); box.textContent = '';
-  for (const w of S.ws) {
+  const sp = curSpace(), box = $('#tabs'); box.textContent = '';
+  sp.tabs.forEach((tab, i) => {
+    const st = topState(leaves(tab.root));
     const b = document.createElement('div');
-    b.className = 'tab' + (w.id === S.active ? ' on' : '');
-    b.innerHTML = '<span></span>' + (S.ws.length > 1 ? '<button class="x" title="Close workspace">×</button>' : '');
-    b.firstChild.textContent = w.name;
-    b.onclick = ev => {
-      if (ev.target.classList.contains('x')) return closeWorkspace(w.id);
-      if (S.active !== w.id) { S.active = w.id; S.zoom = null; S.focus = w.panes[0] || null; saveLayout(); render(); }
-    };
-    b.ondblclick = () => {
-      const n = (prompt('Rename workspace', w.name) || '').trim().slice(0, 24);
-      if (n) { w.name = n.toUpperCase(); saveLayout(); render(); }
-    };
+    b.className = 'tab' + (tab.id === sp.tab ? ' on' : ''); b.dataset.state = st; b.draggable = true;
+    b.innerHTML = '<span class="nm"></span>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '') + '<button class="x" title="Close tab">×</button>';
+    $('.nm', b).textContent = tabName(tab, i) + (S.zoomed[tab.id] ? ' Z' : '');
+    b.onclick = ev => { if (ev.target.classList.contains('x')) closeTab(tab.id); else selectTab(tab.id); };
+    b.ondblclick = ev => { if (!ev.target.classList.contains('x')) renameTab(tab.id); };
+    b.oncontextmenu = ev => tabMenu(ev, tab.id);
+    b.ondragstart = ev => { ev.dataTransfer.setData('text/x-tab', String(i)); ev.dataTransfer.effectAllowed = 'move'; };
+    b.ondragover = ev => { if ([...ev.dataTransfer.types].includes('text/x-tab')) { ev.preventDefault(); b.classList.add('drop-before'); } };
+    b.ondragleave = () => b.classList.remove('drop-before');
+    b.ondrop = ev => { ev.preventDefault(); b.classList.remove('drop-before'); moveInList(sp.tabs, Number(ev.dataTransfer.getData('text/x-tab')), i); commit(); };
     box.appendChild(b);
-  }
-  $('#layout-btn').textContent = wsActive().layout === 'cols' ? 'SPLIT ▥' : 'SPLIT ▤';
+    if (tab.id === sp.tab) requestAnimationFrame(() => b.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  });
 }
-function renderTerms() {
-  const box = $('#terms'); box.textContent = '';
-  const inWs = new Set(wsActive().panes);
-  const list = [...S.terms.values()].filter(t => !isAgent(t)).sort((a, b) => a.created_ms - b.created_ms);
-  for (const t of list) {
-    const st = stateOf(t);
+function renderSpaces() {
+  const box = $('#spaces'); box.textContent = '';
+  S.spaces.forEach((sp, i) => {
+    const st = topState(spaceAddrs(sp)), name = spaceName(sp, i);
     const row = document.createElement('div');
-    row.className = `term ${st}` + (inWs.has(t.address) ? ' in' : '');
-    row.style.setProperty('--c', STATUS_COLOR[st]);
-    row.innerHTML = '<span class="dot"></span><button class="nm"></button><button class="kill" title="End this terminal">⏻</button>';
-    $('.nm', row).innerHTML = '<span></span><small></small>';
-    $('.nm span', row).textContent = labelOf(t);
-    $('.nm small', row).textContent = `${t.address} · ${STATUS_WORD[st]}`;
-    $('.nm', row).onclick = () => { addPane(t.address); document.body.classList.remove('side-open'); };
-    $('.kill', row).onclick = () => killTerminal(t.address);
+    row.className = 'row' + (sp.id === S.active ? ' on' : ''); row.draggable = true;
+    row.innerHTML = '<span class="tile"></span><button class="nm"></button>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '');
+    const tile = $('.tile', row); tile.textContent = name[0] || '?'; tile.style.setProperty('--c', SPACE_COLORS[i % SPACE_COLORS.length]);
+    $('.nm', row).textContent = name;
+    row.onclick = () => selectSpace(sp.id);
+    row.ondblclick = () => renameSpace(sp.id);
+    row.oncontextmenu = ev => spaceMenu(ev, sp.id);
+    row.ondragstart = ev => { ev.dataTransfer.setData('text/x-space', String(i)); row.classList.add('drag'); };
+    row.ondragend = () => row.classList.remove('drag');
+    row.ondragover = ev => { if ([...ev.dataTransfer.types].includes('text/x-space')) { ev.preventDefault(); row.classList.add('drop-before'); } };
+    row.ondragleave = () => row.classList.remove('drop-before');
+    row.ondrop = ev => { ev.preventDefault(); row.classList.remove('drop-before'); moveInList(S.spaces, Number(ev.dataTransfer.getData('text/x-space')), i); commit(); };
     box.appendChild(row);
-  }
-  if (!list.length) box.innerHTML = '<div class="rail-title" style="color:#9a8aa8">NO PLAIN TERMINALS</div>';
+  });
 }
 function renderAgents() {
   const box = $('#agents'); box.textContent = '';
-  const inWs = new Set(wsActive().panes);
-  const list = [...S.terms.values()].filter(isAgent)
-    .sort((a, b) => (ORDER[stateOf(a)] - ORDER[stateOf(b)]) || (a.created_ms - b.created_ms));
-  const n = s => list.filter(t => stateOf(t) === s).length;
+  const list = agentList(), n = s => list.filter(t => stateOf(t) === s).length;
   $('#agents-title').textContent = list.length ? `AGENTS · ${n('working')} WORKING${n('blocked') ? ` · ${n('blocked')} NEED YOU` : ''}` : 'AGENTS';
   for (const t of list) {
-    const st = stateOf(t);
+    const st = stateOf(t), loc = locate(t.address);
     const row = document.createElement('div');
-    row.className = 'agent' + (inWs.has(t.address) ? ' in' : '');
-    row.dataset.state = st;
-    row.style.setProperty('--c', STATUS_COLOR[st]);
-    row.innerHTML = '<span class="blk"></span>' + TRICORDER + '<button class="nm"></button><button class="kill" title="End this agent">⏻</button>';
+    row.className = 'row agent' + (loc && loc.sp.id === S.active ? ' in' : '') + (t.address === S.focus ? ' here' : '');
+    row.dataset.state = st; row.style.setProperty('--c', STATUS_COLOR[st]);
+    row.innerHTML = `<span class="blk"></span>${TRICORDER}<button class="nm"></button><button class="kill" title="End this agent">⏻</button>`;
     $('.blk', row).textContent = STATUS_WORD[st];
     $('.nm', row).innerHTML = '<span></span><small></small>';
     $('.nm span', row).textContent = labelOf(t);
-    $('.nm small', row).textContent = `${(t.cwd || '').split('/').pop() || '/'} · ${ageOf(t)}`;
-    $('.nm', row).onclick = () => {
-      if (inWs.has(t.address)) { setFocus(t.address); const p = P.get(t.address); if (p) p.term.focus(); }
-      else addPane(t.address);
-      document.body.classList.remove('side-open');
-    };
-    $('.kill', row).onclick = () => killTerminal(t.address);
+    $('.nm small', row).textContent = `${folderOf(t)} · ${ageOf(t)}`;
+    $('.nm', row).onclick = () => { focusAddr(t.address); document.body.classList.remove('side-open'); };
+    $('.kill', row).onclick = () => { if (confirm(`End ${labelOf(t)}? The program running in it will stop.`)) { dropFromTree(t.address); endTerminal(t.address); } };
     box.appendChild(row);
   }
   if (!list.length) box.innerHTML = '<div class="rail-title" style="color:#9a8aa8">NO AGENTS</div>';
 }
-function renderPanes() {
-  const w = wsActive();
-  const want = S.zoom && w.panes.includes(S.zoom) ? [S.zoom] : w.panes.filter(a => S.terms.has(a) || P.has(a));
-  for (const [a, p] of [...P]) if (!want.includes(a)) { p.destroy(); P.delete(a); }
-  const box = $('#panes');
-  for (const a of want) if (!P.has(a)) P.set(a, new Pane(a));
-  want.forEach((a, i) => { const p = P.get(a); if (box.children[i] !== p.el) box.insertBefore(p.el, box.children[i] || null); });
-  const n = want.length, cols = w.layout === 'cols';
-  let c = 1, r = 1;
-  if (n > 1) {
-    if (n === 2) { c = cols ? 2 : 1; r = cols ? 1 : 2; }
-    else { c = Math.ceil(Math.sqrt(n)); r = Math.ceil(n / c); if (!cols) [c, r] = [r, c]; }
+function renderUnplaced() {   // plain terminals no tab shows
+  const box = $('#terms'); box.textContent = '';
+  const list = [...S.terms.values()].filter(t => !isAgent(t) && !locate(t.address) && !S.fresh.has(t.address)).sort((a, b) => a.created_ms - b.created_ms);
+  $('#terms-title').hidden = !list.length;
+  for (const t of list) {
+    const st = stateOf(t), row = document.createElement('div');
+    row.className = 'row term'; row.style.setProperty('--c', STATUS_COLOR[st]);
+    row.innerHTML = '<span class="dot"></span><button class="nm"></button><button class="kill" title="End this terminal">⏻</button>';
+    $('.nm', row).innerHTML = '<span></span><small></small>';
+    $('.nm span', row).textContent = labelOf(t); $('.nm small', row).textContent = `${t.address} · ${STATUS_WORD[st]}`;
+    $('.nm', row).onclick = () => { focusAddr(t.address); document.body.classList.remove('side-open'); };
+    $('.kill', row).onclick = () => { if (confirm(`End ${labelOf(t)}?`)) endTerminal(t.address); };
+    box.appendChild(row);
   }
-  box.style.gridTemplateColumns = `repeat(${c},minmax(0,1fr))`;
-  box.style.gridTemplateRows = `repeat(${r},minmax(0,1fr))`;
-  document.body.classList.toggle('no-panes', n === 0);
+}
+
+// the split tree as nested flex boxes, with draggable dividers
+let lastSig = '';
+function buildNode(n) {
+  if (isLeaf(n)) return P.get(n.a).el;
+  const el = document.createElement('div'); el.className = `split ${n.d}`;
+  const kids = n.c.map(buildNode);
+  kids.forEach((k, i) => {
+    k.style.flex = `${n.w[i]} 1 0px`;
+    if (i) el.appendChild(divider(n, i - 1, el, kids));
+    el.appendChild(k);
+  });
+  return el;
+}
+function divider(n, i, container, kids) {
+  const d = document.createElement('div'); d.className = `divider ${n.d}`;
+  d.onpointerdown = e => {
+    e.preventDefault(); d.setPointerCapture(e.pointerId); d.classList.add('active');
+    const row = n.d === 'row', rect = container.getBoundingClientRect(), size = row ? rect.width : rect.height;
+    const total = n.w.reduce((a, b) => a + b, 0), start = row ? e.clientX : e.clientY, w0 = n.w.slice(), min = total * 0.08;
+    const move = ev => {
+      const dx = ((row ? ev.clientX : ev.clientY) - start) / size * total;
+      let a = w0[i] + dx, b = w0[i + 1] - dx;
+      if (a < min) { b -= min - a; a = min; } if (b < min) { a -= min - b; b = min; }
+      n.w[i] = a; n.w[i + 1] = b; kids[i].style.flex = `${a} 1 0px`; kids[i + 1].style.flex = `${b} 1 0px`;
+    };
+    const up = () => {
+      d.classList.remove('active'); d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up);
+      const tab = curTab(); lastSig = sigOf(tab); saveLayout(); P.forEach(p => p.refit());
+    };
+    d.addEventListener('pointermove', move); d.addEventListener('pointerup', up);
+  };
+  return d;
+}
+function zoomOf(tab) { const a = tab && S.zoomed[tab.id]; return a && leaves(tab.root).includes(a) ? a : null; }
+const sigOf = tab => JSON.stringify([tab && tab.id, zoomOf(tab), tab && tab.root]);
+function renderPanes() {
+  const tab = curTab(), root = tab ? tab.root : null, addrs = leaves(root), zoom = zoomOf(tab);
+  for (const [a, p] of [...P]) if (!addrs.includes(a)) { p.destroy(); P.delete(a); }
+  for (const a of addrs) if (!P.has(a)) P.set(a, new Pane(a));
+  if (!addrs.includes(S.focus)) S.focus = addrs[0] || null;
+  const sig = sigOf(tab), box = $('#panes');
+  if (sig !== lastSig) {
+    lastSig = sig; box.textContent = '';
+    if (root) {
+      if (zoom) { const el = P.get(zoom).el; el.style.flex = '1 1 auto'; box.appendChild(el); }
+      else { const el = buildNode(root); box.appendChild(el); }
+    }
+  }
+  document.body.classList.toggle('no-panes', addrs.length === 0);
   for (const [a, p] of P) { p.update(); p.el.classList.toggle('focus', a === S.focus); }
   requestAnimationFrame(() => P.forEach(p => p.refit()));
 }
 function renderFoot() {
-  const all = [...S.terms.values()].map(stateOf);
-  const n = s => all.filter(x => x === s).length;
+  const all = [...S.terms.values()].map(stateOf), n = s => all.filter(x => x === s).length;
   $('#f-counts').textContent = `${all.length} TERMINALS · ${n('working')} WORKING · ${n('blocked')} NEED YOU · ${n('done')} DONE`;
 }
 
 // ── event feed ────────────────────────────────────────────────────────
-let evWS, evRetry = 0, refreshT;
+let evRetry = 0, refreshT;
 function connectEvents() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  evWS = new WebSocket(`${proto}://${location.host}/ws/events`);
-  evWS.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
-  evWS.onmessage = ev => {
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/events`);
+  ws.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
+  ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'snapshot') { $('#f-core').textContent = `CORE · SEQ ${m.seq}`; }
-    else if (m.type === 'notification' && m.method === 'event') {
-      clearTimeout(refreshT); refreshT = setTimeout(() => refreshTerms().catch(() => {}), 120);
-    } else if (m.type === 'error') { toast(m.error, true); }
+    if (m.type === 'snapshot') $('#f-core').textContent = `CORE · SEQ ${m.seq}`;
+    else if (m.type === 'notification' && m.method === 'event') { clearTimeout(refreshT); refreshT = setTimeout(() => refreshTerms().catch(() => {}), 120); }
+    else if (m.type === 'error') toast(m.error, true);
   };
-  evWS.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
+  ws.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
-function setConn(ok) {
-  const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'pill ' + (ok ? 'ok' : 'bad');
-}
+function setConn(ok) { const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'pill ' + (ok ? 'ok' : 'bad'); }
 
 // ── wiring ────────────────────────────────────────────────────────────
-const KEYS = { esc: '\x1b', tab: '\t', 'ctrl-c': '\x03', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r' };
+const KEYSEQ = { esc: '\x1b', tab: '\t', 'ctrl-c': '\x03', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r' };
+function toggleSound() {
+  S.sound = !S.sound; localStorage.setItem('lcars-sound', S.sound ? 'on' : 'off');
+  $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF'; if (S.sound) play('keyok1');
+}
+function startSession(kind) {
+  const dlg = $('#new-dlg');
+  $('#new-title').textContent = kind === 'claude' ? 'NEW CLAUDE SESSION' : 'NEW SHELL';
+  $('#new-name').value = ''; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
+}
 function init() {
   $('#new-claude').onclick = () => startSession('claude');
   $('#new-shell').onclick = () => startSession('shell');
-  $('#add-ws').onclick = newWorkspace;
-  $('#layout-btn').onclick = () => { const w = wsActive(); w.layout = w.layout === 'cols' ? 'rows' : 'cols'; saveLayout(); render(); };
+  $('#tab-add').onclick = ev => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
+  };
+  $('#space-add').onclick = () => run('space.new');
+  $('#keys-btn').onclick = () => run('app.help');
+  $('#f-hint').onclick = () => run('app.palette');
   $('#menu-btn').onclick = () => document.body.classList.toggle('side-open');
   $('#main').addEventListener('click', () => document.body.classList.remove('side-open'));
   $('#upload-btn').onclick = () => { if (!S.focus) return toast('Focus a terminal first', true); $('#file-input').click(); };
   $('#file-input').onchange = ev => { const p = P.get(S.focus); if (p) p.sendFiles([...ev.target.files]); ev.target.value = ''; };
-  $('#sound-btn').onclick = () => { S.sound = !S.sound; localStorage.setItem('lcars-sound', S.sound ? 'on' : 'off'); $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF'; if (S.sound) play('keyok1'); };
-  $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
-  $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYS[k] }); p.term.focus(); } });
+  $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
+  $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });
+  $('#tabs').addEventListener('wheel', ev => { ev.preventDefault(); stepTab(ev.deltaY > 0 || ev.deltaX > 0 ? 1 : -1); }, { passive: false });
   $('#new-dlg').addEventListener('close', ev => {
     const dlg = ev.target;
-    if (dlg.returnValue === 'ok') createSession(dlg.dataset.kind, $('#new-name').value.trim(), $('#new-cwd').value.trim());
+    if (dlg.returnValue === 'ok') newTabWith(dlg.dataset.kind, { name: $('#new-name').value.trim(), cwd: $('#new-cwd').value.trim() });
   });
+  const pi = $('#pal-input');
+  pi.addEventListener('input', () => fillPalette(pi.value));
+  pi.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); movePal(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); movePal(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); runPalette(palSel); }
+  });
+  $('#help-close').onclick = () => $('#help-dlg').close();
+  document.querySelectorAll('dialog button[value=cancel]').forEach(b => { b.type = 'button'; b.onclick = () => b.closest('dialog').close('cancel'); });
   setInterval(renderAgents, 30000);
   setInterval(() => { $('#f-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
-  // Paste of an image anywhere on the page goes to the focused terminal.
-  document.addEventListener('paste', ev => {
-    const files = [...(ev.clipboardData ? ev.clipboardData.files : [])];
-    const p = P.get(S.focus);
+  document.addEventListener('paste', ev => {   // an image pasted anywhere goes to the focused terminal
+    const files = [...(ev.clipboardData ? ev.clipboardData.files : [])], p = P.get(S.focus);
     if (files.length && p && !p.el.contains(ev.target)) { ev.preventDefault(); p.sendFiles(files); }
   });
   window.addEventListener('resize', () => P.forEach(p => p.refit()));
@@ -412,7 +821,7 @@ function init() {
 (async function main() {
   init();
   await loadLayout();
-  render();
-  try { await refreshTerms(); } catch (e) { toast(e.message, true); }
+  // Learn which terminals still exist before drawing, so a pane is never opened on a dead one.
+  try { await refreshTerms(); } catch (e) { toast(e.message, true); render(); }
   connectEvents();
 })();

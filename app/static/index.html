@@ -12,32 +12,35 @@
 </head>
 <body>
 <div id="app">
-  <button id="menu-btn" aria-label="Menu">≡</button>
   <div id="elbow"><span id="brand">LCARS</span></div>
   <header id="top">
+    <button id="menu-btn" aria-label="Menu">≡</button>
     <div id="tabs" role="tablist"></div>
-    <button class="pill sky" id="add-ws" title="New workspace">+ WORKSPACE</button>
-    <button class="pill peach" id="layout-btn" title="Split direction">SPLIT ▥</button>
+    <button class="pill orange" id="tab-add" title="New tab">+</button>
     <span id="conn" class="pill gray">LINKING</span>
   </header>
 
   <aside id="side">
-    <div class="rail-title">TERMINALS</div>
-    <div id="terms"></div>
+    <div class="rail-head"><span class="rail-title">SPACES</span><button class="rail-add" id="space-add" title="New space">+</button></div>
+    <div id="spaces"></div>
     <div class="rail-title" id="agents-title">AGENTS</div>
     <div id="agents"></div>
-    <button class="pill orange" id="new-claude">NEW CLAUDE</button>
-    <button class="pill lilac" id="new-shell">NEW SHELL</button>
-    <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
-    <button class="pill violet" id="sound-btn">SOUND ON</button>
+    <div class="rail-title" id="terms-title" hidden>UNPLACED</div>
+    <div id="terms"></div>
+    <div class="rail-foot">
+      <button class="pill orange" id="new-claude">NEW CLAUDE</button>
+      <button class="pill lilac" id="new-shell">NEW SHELL</button>
+      <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
+      <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button></div>
+    </div>
     <input type="file" id="file-input" multiple hidden>
   </aside>
 
   <main id="main">
     <div id="panes"></div>
     <div id="empty">
-      <h2>NO TERMINALS IN THIS WORKSPACE</h2>
-      <p>Start a new Claude session, or pick a running terminal from the list.</p>
+      <h2>THIS TAB IS EMPTY</h2>
+      <p>Start a Claude session or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
     </div>
     <div id="keybar" aria-label="Touch keys">
       <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
@@ -47,7 +50,8 @@
   </main>
 
   <footer id="foot">
-    <span id="f-core">CORE —</span><span id="f-counts"></span><span class="grow"></span><span id="f-clock"></span>
+    <span id="f-core">CORE —</span><span id="f-counts"></span><span class="grow"></span>
+    <button id="f-hint" title="Command palette">CTRL+SHIFT+P COMMANDS</button><span id="f-clock"></span>
   </footer>
 </div>
 
@@ -59,6 +63,26 @@
     <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" value="ok">ENGAGE</button></div>
   </form>
 </dialog>
+
+<dialog id="ask-dlg">
+  <form method="dialog">
+    <h3 id="ask-title">RENAME</h3>
+    <label><input id="ask-input" maxlength="40" autocomplete="off"></label>
+    <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" value="ok">OK</button></div>
+  </form>
+</dialog>
+
+<dialog id="pal-dlg">
+  <input id="pal-input" placeholder="Type a command…" autocomplete="off" spellcheck="false">
+  <div id="pal-list"></div>
+</dialog>
+
+<dialog id="help-dlg">
+  <h3>KEYBOARD SHORTCUTS</h3>
+  <div id="help-body"></div>
+  <div class="row"><button class="pill orange" id="help-close">CLOSE</button></div>
+</dialog>
+
 <div id="toast" role="status"></div>
 
 <script src="/static/vendor/xterm.js"></script>

@@ -93,7 +93,11 @@ async def guard(request: Request, call_next):
         return HTMLResponse(LOGIN_PAGE, status_code=401)
     if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_origin(request.headers):
         return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    if path == "/" or path.startswith("/static/"):
+        # Revalidate every time (cheap 304s), so a new page never runs against an old script.
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
