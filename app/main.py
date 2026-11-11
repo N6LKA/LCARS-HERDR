@@ -1,565 +1,385 @@
+"""LCARS Claude: a web front end for the terminals herdr-core runs.
+
+The browser never talks to Claude directly. It attaches to real `claude`
+terminals that live in herdr-core on this machine, so MCP tools load once and
+every session stays alive when the page is closed.
+"""
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
-import shlex
-import subprocess
 import time
-import uuid
-from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
 
-from .claude_runner import run_claude
-from .conversation import ConversationStore
+from .core_client import CLOSE, DATA, FOCUS, RESIZE, Core, CoreClosed, CoreError
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger(__name__)
+log = logging.getLogger("lcars")
 
-store = ConversationStore()
+STATIC = Path(__file__).parent / "static"
+TOKEN = os.environ.get("LCARS_TOKEN", "")
+# Proxies (e.g. Nginx Proxy Manager behind Authelia) whose `Remote-User` header we accept as a login.
+TRUSTED_PROXIES = {p.strip() for p in os.environ.get("LCARS_TRUSTED_PROXIES", "").split(",") if p.strip()}
+COOKIE = "lcars_session"
+MAX_UPLOAD = 8 * 1024 * 1024  # terminal.put accepts at most 8 MB raw
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
+XTERM_ENV = {"TERM": "xterm-256color", "COLORTERM": "truecolor"}
 
-# ─── Permission request state ──────────────────────────────────────
-# Pending permission requests from the hook script, keyed by req_id.
-# The SSE generator for the active conversation injects these as events;
-# the browser shows a modal and POSTs a decision back.
-
-@dataclass
-class PendingPermission:
-    req_id: str
-    tool_name: str
-    tool_input: dict
-    conv_id: str
-    decision: str | None = None
-
-pending_permissions: dict[str, PendingPermission] = {}
-
-# Conversations with "allow all this session" active — auto-approve without modal
-session_allow_all: set[str] = set()
-
-# Active SSE streams: conv_id → combined asyncio.Queue
-# Items are tagged tuples: ("claude", event_type, payload) or ("perm", sse_event_dict)
-active_perm_queues: dict[str, asyncio.Queue] = {}
-
-# ─── App ──────────────────────────────────────────────────────────
-
-app = FastAPI(title="LCARS Claude Interface")
-
-static_dir = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app = FastAPI(title="LCARS Claude", docs_url=None, redoc_url=None, openapi_url=None)
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    content = (static_dir / "index.html").read_text()
-    return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
+# ── auth ────────────────────────────────────────────────────────────────
+def _session_value() -> str:
+    return hashlib.sha256(("lcars-session:" + TOKEN).encode()).hexdigest()
 
 
-@app.get("/manifest.json")
-async def manifest():
-    content = (static_dir / "manifest.json").read_text()
-    return Response(content=content, media_type="application/manifest+json")
+_failures: dict[str, list[float]] = {}
 
 
-@app.get("/sw.js")
-async def service_worker():
-    content = (static_dir / "sw.js").read_text()
-    return Response(
-        content=content,
-        media_type="application/javascript",
-        headers={"Service-Worker-Allowed": "/"},
-    )
+def _login_blocked(ip: str) -> bool:
+    now = time.time()
+    recent = [t for t in _failures.get(ip, []) if now - t < 60]
+    _failures[ip] = recent
+    return len(recent) >= 5
 
 
+def _authorized(headers, cookies, client_host: str | None) -> bool:
+    if not TOKEN:
+        return False  # never run open
+    if client_host in TRUSTED_PROXIES and headers.get("remote-user"):
+        return True
+    if hmac.compare_digest(cookies.get(COOKIE, ""), _session_value()):
+        return True
+    bearer = headers.get("authorization", "")
+    return bearer.startswith("Bearer ") and hmac.compare_digest(bearer[7:], TOKEN)
+
+
+def _same_origin(headers) -> bool:
+    """Reject cross-site pages talking to us (this is a shell on the machine)."""
+    origin = headers.get("origin")
+    if not origin:
+        return True  # not a browser page; the token still applies
+    host = headers.get("x-forwarded-host") or headers.get("host", "")
+    return urlparse(origin).netloc == host
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    path = request.url.path
+    if path in ("/login", "/api/login"):
+        return await call_next(request)
+    if not _authorized(request.headers, request.cookies, request.client.host if request.client else None):
+        if path.startswith("/api/"):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return HTMLResponse(LOGIN_PAGE, status_code=401)
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_origin(request.headers):
+        return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
+    return await call_next(request)
+
+
+LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>LCARS Claude</title><style>
+body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
+form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
+input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
+input{background:#1a1224;color:#ffcc99}</style>
+<form onsubmit="return go(event)"><h1>LCARS ACCESS</h1>
+<input id=t type=password placeholder="Access code" autofocus autocomplete=current-password>
+<button>AUTHORIZE</button><div id=m></div></form>
+<script>async function go(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',
+headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value})});
+if(r.ok)location.href='/';else m.textContent=r.status==429?'Too many attempts':'Access denied';return false}</script>"""
+
+
+class LoginBody(BaseModel):
+    token: str
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    return LOGIN_PAGE
+
+
+@app.post("/api/login")
+async def login(body: LoginBody, request: Request):
+    ip = request.client.host if request.client else "?"
+    if not _same_origin(request.headers):
+        return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
+    if _login_blocked(ip):
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
+    if not TOKEN or not hmac.compare_digest(body.token, TOKEN):
+        _failures.setdefault(ip, []).append(time.time())
+        return JSONResponse({"error": "denied"}, status_code=401)
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(COOKIE, _session_value(), httponly=True, samesite="strict", secure=secure, max_age=30 * 86400)
+    return resp
+
+
+# ── core access ─────────────────────────────────────────────────────────
+_core: Core | None = None
+_core_lock = asyncio.Lock()
+
+
+async def rpc(method: str, params: dict | None = None):
+    """One shared connection for request/response calls; reconnects if it drops."""
+    global _core
+    for attempt in (1, 2):
+        async with _core_lock:
+            if _core is None or _core.closed.is_set():
+                _core = await Core().connect()
+            core = _core
+        try:
+            return await core.call(method, params)
+        except CoreClosed:
+            if attempt == 2:
+                raise
+        except CoreError as e:
+            raise HTTPException(status_code=422 if e.kind else 500, detail=str(e))
+
+
+@app.exception_handler(ConnectionError)
+async def core_down(_request, exc):
+    return JSONResponse({"error": f"herdr-core unavailable: {exc}"}, status_code=503)
+
+
+@app.exception_handler(FileNotFoundError)
+async def core_missing(_request, _exc):
+    return JSONResponse({"error": "herdr-core is not running"}, status_code=503)
+
+
+# ── REST ────────────────────────────────────────────────────────────────
 @app.get("/api/status")
 async def status():
-    return {"model": "claude-code (subscription)", "backend": "claude-code-cli"}
+    return await rpc("server.status")
 
 
-@app.get("/api/metrics")
-async def get_metrics():
-    def read_stat():
-        with open('/proc/stat') as f:
-            parts = f.readline().split()
-        vals = list(map(int, parts[1:]))
-        return sum(vals), vals[3]
+@app.get("/api/terminals")
+async def list_terminals(all: bool = False):
+    return await rpc("terminal.list", {"all": all})
 
-    t1, i1 = read_stat()
-    await asyncio.sleep(0.5)
-    t2, i2 = read_stat()
-    cpu_pct = max(0.0, min(100.0, (1 - (i2 - i1) / (t2 - t1)) * 100)) if (t2 - t1) > 0 else 0.0
 
-    meminfo: dict[str, int] = {}
-    with open('/proc/meminfo') as f:
-        for line in f:
-            if ':' in line:
-                k, v = line.split(':', 1)
-                meminfo[k.strip()] = int(v.strip().split()[0])
-    mem_total = meminfo.get('MemTotal', 1)
-    mem_avail = meminfo.get('MemAvailable', 0)
-    mem_pct = (mem_total - mem_avail) / mem_total * 100
+class NewTerminal(BaseModel):
+    kind: str = "claude"  # "claude" or "shell"
+    name: str | None = None
+    cwd: str | None = None
+    cols: int = 120
+    rows: int = 32
+    on: str | None = None  # another machine added to the core
+    args: list[str] = []
 
-    return {
-        "cpu_pct": round(cpu_pct, 1),
-        "mem_pct": round(mem_pct, 1),
-        "mem_used_mb": round((mem_total - mem_avail) / 1024),
-        "mem_total_mb": round(mem_total / 1024),
+
+@app.post("/api/terminals")
+async def new_terminal(body: NewTerminal):
+    if body.kind not in ("claude", "shell"):
+        raise HTTPException(422, "kind must be claude or shell")
+    if body.name and not NAME_RE.match(body.name):
+        raise HTTPException(422, "name: 1-32 of a-z 0-9 _ . -")
+    params: dict = {
+        "env": XTERM_ENV,
+        "labels": {"app": "lcars", "kind": body.kind},
+        "size": {"cols": body.cols, "rows": body.rows},
+        "no_parent": True,
     }
+    if body.kind == "claude":
+        params["argv"] = ["claude", *body.args]
+    if body.name:
+        params["name"] = body.name
+    if body.cwd:
+        params["cwd"] = body.cwd
+    if body.on:
+        params["on"] = body.on
+    return await rpc("terminal.run", params)
 
 
-# ─── Conversations ─────────────────────────────────────────────────
+@app.delete("/api/terminals")
+async def kill_terminal(terminal: str):
+    return await rpc("terminal.kill", {"terminal": terminal})
 
-@app.get("/api/conversations")
-async def list_conversations():
-    return store.list_all()
 
+@app.post("/api/terminals/remove")
+async def remove_terminal(terminal: str):
+    return await rpc("terminal.rm", {"terminal": terminal})
 
-@app.post("/api/conversations")
-async def new_conversation():
-    conv = store.new()
-    return conv.to_dict()
 
-
-@app.delete("/api/conversations/{conv_id}")
-async def delete_conversation(conv_id: str):
-    conv = store.get(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    session_id = conv.claude_session_id
-    store.delete(conv_id)
-    if session_id:
-        session_file = Path.home() / ".claude" / "projects" / "-root" / f"{session_id}.jsonl"
-        try:
-            session_file.unlink(missing_ok=True)
-            logger.info(f"Deleted session file for {session_id}")
-        except Exception as e:
-            logger.warning(f"Could not delete session file: {e}")
-    return {"ok": True}
-
-
-class UpdateConvRequest(BaseModel):
-    title: str
-
-
-@app.patch("/api/conversations/{conv_id}")
-async def update_conversation(conv_id: str, body: UpdateConvRequest):
-    conv = store.get(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    if body.title.strip():
-        conv.title = body.title.strip()
-        conv.updated_at = time.time()
-        store._save()
-    return conv.to_dict()
-
-
-@app.post("/api/conversations/{conv_id}/activate")
-async def activate_conversation(conv_id: str):
-    conv = store.set_active(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return conv.to_dict()
-
-
-@app.get("/api/conversations/{conv_id}/messages")
-async def get_messages(conv_id: str):
-    conv = store.get(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return conv.messages
-
-
-
-class ResumeRequest(BaseModel):
-    session_id: str
-    title: str = "Resumed Session"
-
-
-@app.post("/api/conversations/resume")
-async def resume_conversation(body: ResumeRequest):
-    conv = store.new()
-    conv.claude_session_id = body.session_id
-    conv.title = body.title
-    store._save()
-    return conv.to_dict()
-
-
-CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "/root/.local/bin/claude")
-
-
-@app.post("/api/conversations/{conv_id}/uplink")
-async def uplink_conversation(conv_id: str):
-    """Start a remote-control session, inject LCARS history, and track the new session ID."""
-    conv = store.get(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    tmux_name = f"lcars-{conv_id}"
-    subprocess.run(["tmux", "kill-session", "-t", tmux_name], capture_output=True)
-
-    # Snapshot existing JSONL files — new one that appears will be the remote session
-    jsonl_dir = Path.home() / ".claude" / "projects" / "-root"
-    existing_jsonl = {f.stem for f in jsonl_dir.glob("*.jsonl")}
-
-    # Start fresh --remote-control session (--print sessions can't be resumed in RC mode)
-    shell_cmd = f'{CLAUDE_BIN} --remote-control {shlex.quote("LCARS-" + conv_id)}'
-    try:
-        r = subprocess.run(
-            ["tmux", "new-session", "-d", "-s", tmux_name, shell_cmd],
-            capture_output=True, text=True, timeout=10,
-        )
-        if r.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"tmux error: {r.stderr.strip()}")
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="tmux timed out")
-
-    # Poll for URL and simultaneously watch for new JSONL (remote session ID)
-    remote_url = None
-    new_session_id = None
-    for _ in range(25):
-        await asyncio.sleep(1)
-        pane = subprocess.run(
-            ["tmux", "capture-pane", "-t", tmux_name, "-p"],
-            capture_output=True, text=True,
-        )
-        if pane.returncode != 0:
-            logger.warning(f"Uplink session {tmux_name} exited early")
-            break
-
-        # Check for new JSONL file (may appear before URL)
-        if not new_session_id:
-            new_jsonl = {f.stem for f in jsonl_dir.glob("*.jsonl")} - existing_jsonl
-            if new_jsonl:
-                newest = max((jsonl_dir / f"{s}.jsonl" for s in new_jsonl), key=lambda f: f.stat().st_mtime)
-                new_session_id = newest.stem
-
-        m = re.search(r'https://claude\.ai/code/session_\S+', pane.stdout)
-        if m:
-            remote_url = m.group(0).rstrip(')')
-            break
-
-    if not remote_url:
-        raise HTTPException(status_code=500, detail="Remote-control URL not found — session may have failed to start")
-
-    # Inject LCARS conversation history so the Claude app session has context
-    if conv.messages:
-        parts = []
-        for msg in conv.messages[-16:]:
-            role = "User" if msg["role"] == "user" else "Claude"
-            content = msg.get("content", [])
-            if isinstance(content, list):
-                text = " ".join(b.get("text", "") for b in content if b.get("type") == "text").strip()
-            else:
-                text = str(content).strip()
-            if text:
-                snippet = (text[:250] + "…") if len(text) > 250 else text
-                parts.append(f"{role}: {snippet}")
-        if parts:
-            context_msg = (
-                "This session was uplinked from LCARS. Prior conversation history: "
-                + " || ".join(parts)
-                + " || [End of LCARS history — you may continue from here]"
-            )
-            subprocess.run(["tmux", "send-keys", "-t", tmux_name, "-l", context_msg], capture_output=True)
-            subprocess.run(["tmux", "send-keys", "-t", tmux_name, "Enter"], capture_output=True)
-
-            # Wait for Claude to respond and for the JSONL to be created
-            if not new_session_id:
-                for _ in range(15):
-                    await asyncio.sleep(1)
-                    new_jsonl = {f.stem for f in jsonl_dir.glob("*.jsonl")} - existing_jsonl
-                    if new_jsonl:
-                        newest = max((jsonl_dir / f"{s}.jsonl" for s in new_jsonl), key=lambda f: f.stat().st_mtime)
-                        new_session_id = newest.stem
-                        break
-
-    logger.info(f"Uplink conv={conv_id} url={remote_url} new_session={new_session_id}")
-
-    conv.is_remote = True
-    conv.remote_url = remote_url
-    conv.updated_at = time.time()
-    if new_session_id:
-        conv.claude_session_id = new_session_id
-    store._save()
-
-    result_dict = conv.to_dict()
-    result_dict["remote_url"] = remote_url
-    return result_dict
-
-
-@app.post("/api/conversations/{conv_id}/sync")
-async def sync_conversation(conv_id: str):
-    """Re-read the Claude session JSONL file and refresh stored messages."""
-    conv = store.get(conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    if not conv.claude_session_id:
-        raise HTTPException(status_code=400, detail="No Claude session to sync")
-
-    session_file = Path.home() / ".claude" / "projects" / "-root" / f"{conv.claude_session_id}.jsonl"
-    if not session_file.exists():
-        raise HTTPException(status_code=404, detail="Session file not found on disk")
-
-    messages: list[dict] = []
-    for line in session_file.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if obj.get("isSidechain", True):
-            continue
-
-        msg_type = obj.get("type")
-        if msg_type not in ("user", "assistant"):
-            continue
-
-        msg = obj.get("message", {})
-        role = msg.get("role", msg_type)
-        raw_content = msg.get("content", "")
-
-        if isinstance(raw_content, str):
-            if not raw_content.strip():
-                continue
-            content: list[dict] = [{"type": "text", "text": raw_content}]
-        elif isinstance(raw_content, list):
-            if role == "assistant":
-                content = [b for b in raw_content if isinstance(b, dict) and b.get("type") == "text"]
-            else:
-                content = [b for b in raw_content if isinstance(b, dict) and b.get("type") in ("text", "image")]
-        else:
-            continue
-
-        if not content:
-            continue
-
-        messages.append({"role": role, "content": content})
-
-    conv.messages = messages
-    conv.updated_at = time.time()
-    store._save()
-    logger.info(f"Synced conv {conv_id}: {len(messages)} messages from JSONL")
-    return {"ok": True, "message_count": len(messages)}
-
-
-# ─── Permission bridge ─────────────────────────────────────────────
-
-class PermHookBody(BaseModel):
-    conv_id: str = ""
-    data: dict = {}
-
-
-class PermDecisionBody(BaseModel):
-    decision: str       # "allow" or "deny"
-    all_session: bool = False  # if True, auto-approve all future requests this session
-
-
-@app.post("/api/permission/request")
-async def permission_request(body: PermHookBody):
-    """Called by the permission-hook.sh script when Claude needs authorization."""
-    req_id = str(uuid.uuid4())[:8]
-    tool_name = body.data.get("tool_name", "Unknown")
-    tool_input = body.data.get("tool_input", {})
-
-    perm = PendingPermission(
-        req_id=req_id,
-        tool_name=tool_name,
-        tool_input=tool_input,
-        conv_id=body.conv_id,
-    )
-    pending_permissions[req_id] = perm
-
-    # If "allow all" is active for this conversation, auto-approve silently
-    if body.conv_id in session_allow_all:
-        perm.decision = "allow"
-        logger.info(f"Auto-approved {req_id}: {tool_name} (session allow-all)")
-        return {"req_id": req_id, "status": "pending"}
-
-    logger.info(f"Permission request {req_id}: {tool_name} conv={body.conv_id}")
-
-    # Inject SSE event into the active conversation stream
-    if body.conv_id and body.conv_id in active_perm_queues:
-        await active_perm_queues[body.conv_id].put((
-            "perm",
-            {
-                "event": "permission_request",
-                "data": json.dumps({
-                    "req_id": req_id,
-                    "tool": tool_name,
-                    "input": tool_input,
-                }),
-            },
-        ))
-
-    return {"req_id": req_id, "status": "pending"}
-
-
-@app.get("/api/permission/decision/{req_id}")
-async def permission_decision(req_id: str):
-    """Polled by the hook script to get the user's decision."""
-    perm = pending_permissions.get(req_id)
-    if not perm:
-        return {"status": "not_found"}
-    if perm.decision is None:
-        return {"status": "pending"}
-    return {"status": perm.decision}
-
-
-@app.post("/api/permission/response/{req_id}")
-async def permission_response(req_id: str, body: PermDecisionBody):
-    """Called by the browser when the user clicks Authorize, Allow All, or Deny."""
-    perm = pending_permissions.get(req_id)
-    if not perm:
-        raise HTTPException(status_code=404, detail="Permission request not found or expired")
-    if body.decision not in ("allow", "deny"):
-        raise HTTPException(status_code=400, detail="Decision must be 'allow' or 'deny'")
-    perm.decision = body.decision
-    if body.all_session and body.decision == "allow" and perm.conv_id:
-        session_allow_all.add(perm.conv_id)
-        logger.info(f"Allow-all-session enabled for conv {perm.conv_id}")
-    logger.info(f"Permission {req_id} ({perm.tool_name}): {body.decision} all_session={body.all_session}")
-    return {"ok": True}
-
-
-@app.get("/api/permission/session-status/{conv_id}")
-async def session_allow_status(conv_id: str):
-    """Let the browser check whether allow-all is currently active."""
-    return {"allow_all": conv_id in session_allow_all}
-
-
-@app.post("/api/permission/session-allow/{conv_id}")
-async def enable_session_allow(conv_id: str):
-    """Let the browser enable allow-all directly (sidebar button)."""
-    session_allow_all.add(conv_id)
-    logger.info(f"Allow-all-session enabled via button for conv {conv_id}")
-    return {"ok": True}
-
-
-@app.delete("/api/permission/session-allow/{conv_id}")
-async def revoke_session_allow(conv_id: str):
-    """Let the browser revoke allow-all (click the indicator to cancel)."""
-    session_allow_all.discard(conv_id)
-    return {"ok": True}
-
-
-# ─── Chat stream ───────────────────────────────────────────────────
-
-class ChatRequest(BaseModel):
-    conversation_id: str | None = None
+class SendBody(BaseModel):
+    terminal: str
     text: str
-    images: list[str] = []
 
 
-@app.post("/api/chat/stream")
-async def chat_stream(request: Request, body: ChatRequest):
-    if body.conversation_id:
-        conv = store.get(body.conversation_id) or store.get_active()
-    else:
-        conv = store.get_active()
+class KeysBody(BaseModel):
+    terminal: str
+    keys: list[str]
 
-    display_content: list[dict] = []
-    for data_uri in body.images:
-        header, b64data = data_uri.split(",", 1)
-        media_type = header.split(":")[1].split(";")[0]
-        display_content.append({
-            "type": "image",
-            "source": {"type": "base64", "media_type": media_type, "data": b64data},
-        })
-    if body.text.strip():
-        display_content.append({"type": "text", "text": body.text})
 
-    if not display_content:
-        raise HTTPException(status_code=400, detail="Empty message")
+@app.post("/api/terminals/send")
+async def send_text(body: SendBody):
+    return await rpc("terminal.send", {"terminal": body.terminal, "text": body.text})
 
-    conv.add_user_message(display_content)
-    store._save()
 
-    async def generate():
-        collected_text: list[str] = []
+@app.post("/api/terminals/keys")
+async def send_keys(body: KeysBody):
+    return await rpc("terminal.keys", {"terminal": body.terminal, "keys": body.keys})
 
-        # Combined queue receives both Claude CLI output and injected permission events.
-        # Items: ("claude", event_type, payload) | ("perm", sse_event_dict)
-        combined_queue: asyncio.Queue = asyncio.Queue()
-        active_perm_queues[conv.id] = combined_queue
 
-        try:
-            yield {"event": "start", "data": json.dumps({"conversation_id": conv.id})}
+@app.post("/api/terminals/interrupt")
+async def interrupt(terminal: str):
+    return await rpc("terminal.interrupt", {"terminal": terminal})
 
-            async def fill_queue():
-                try:
-                    async for event_type, payload in run_claude(
-                        text=body.text,
-                        images=body.images,
-                        session_id=conv.claude_session_id,
-                        conv_id=conv.id,
-                    ):
-                        await combined_queue.put(("claude", event_type, payload))
-                finally:
-                    await combined_queue.put(("claude", None, None))  # sentinel
 
-            task = asyncio.create_task(fill_queue())
+@app.post("/api/terminals/upload")
+async def upload(terminal: str = Form(...), file: UploadFile = File(...)):
+    """Put a pasted image or dropped document beside a terminal; returns the path to type."""
+    data = await file.read(MAX_UPLOAD + 1)
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "file larger than 8 MB")
+    name = Path(file.filename or "upload").name or "upload"
+    return await rpc("terminal.put", {"terminal": terminal, "name": name, "data": base64.b64encode(data).decode()})
 
+
+@app.get("/api/doc/{name}")
+async def get_doc(name: str, on: str | None = None):
+    return await rpc("doc.get", {"name": name, **({"on": on} if on else {})})
+
+
+class DocBody(BaseModel):
+    value: object
+    version: int
+
+
+@app.put("/api/doc/{name}")
+async def set_doc(name: str, body: DocBody, on: str | None = None):
+    return await rpc("doc.set", {"name": name, "value": body.value, "version": body.version, **({"on": on} if on else {})})
+
+
+@app.get("/api/machines")
+async def machines():
+    return await rpc("machine.list")
+
+
+# ── live: terminal streams and the event feed ──────────────────────────
+async def _ws_ok(ws: WebSocket) -> bool:
+    ok = _authorized(ws.headers, ws.cookies, ws.client.host if ws.client else None) and _same_origin(ws.headers)
+    if not ok:
+        await ws.close(code=4401)
+    return ok
+
+
+@app.websocket("/ws/events")
+async def ws_events(ws: WebSocket):
+    """Snapshot of terminals, then every change the core reports."""
+    if not await _ws_ok(ws):
+        return
+    await ws.accept()
+    core = None
+    try:
+        core = await Core().connect()
+        snap, feed = await core.subscribe()
+        await ws.send_text(json.dumps({"type": "snapshot", **snap}))
+
+        async def pump():
             while True:
-                try:
-                    item = await asyncio.wait_for(combined_queue.get(), timeout=20.0)
-                except asyncio.TimeoutError:
-                    yield {"event": "ping", "data": "{}"}
+                await ws.send_text(json.dumps({"type": "notification", **(await feed.next())}))
+
+        async def watch_browser():
+            while (await ws.receive())["type"] != "websocket.disconnect":
+                pass
+
+        tasks = [asyncio.create_task(pump()), asyncio.create_task(watch_browser())]
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in tasks:
+            t.cancel()
+    except (ConnectionError, FileNotFoundError, CoreError) as e:
+        await _ws_send_error(ws, e)
+    finally:
+        if core:
+            await core.close()
+
+
+async def _ws_send_error(ws: WebSocket, err: Exception):
+    try:
+        await ws.send_text(json.dumps({"type": "error", "error": str(err)}))
+        await ws.close()
+    except Exception:
+        pass
+
+
+@app.websocket("/ws/term")
+async def ws_term(ws: WebSocket, terminal: str, cols: int = 120, rows: int = 32, observe: int = 0, history: int = 0):
+    """Bytes both ways between the browser terminal and one core terminal.
+
+    Browser -> server: binary frames or {"type":"input","data":...} are typed into the
+    terminal; {"type":"resize","cols","rows"} and {"type":"focus","focused":bool} are controls.
+    Server -> browser: binary frames are terminal output (the first is a full repaint);
+    text frames are {"type":"attached"|"closed"|"error"}.
+    """
+    if not await _ws_ok(ws):
+        return
+    await ws.accept()
+    core = None
+    try:
+        core = await Core().connect()
+        stream, res = await core.attach(terminal, cols, rows, observe=bool(observe), history=history)
+        await ws.send_text(json.dumps({"type": "attached", "terminal": res["terminal"], "observe": bool(observe)}))
+
+        async def to_browser():
+            while True:
+                kind, payload = await stream.recv()
+                if kind == DATA:
+                    await ws.send_bytes(payload)
+                elif kind == CLOSE:
+                    await ws.send_text(json.dumps({"type": "closed", "reason": stream.close_reason}))
+                    return
+
+        async def to_core():
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    return
+                if observe:
                     continue
+                if msg.get("bytes"):
+                    await stream.send_data(msg["bytes"])
+                elif msg.get("text"):
+                    try:
+                        c = json.loads(msg["text"])
+                    except ValueError:
+                        continue
+                    t = c.get("type")
+                    if t == "input":
+                        await stream.send_data(str(c.get("data", "")).encode())
+                    elif t == "resize":
+                        await stream.resize(max(2, int(c["cols"])), max(2, int(c["rows"])))
+                    elif t == "focus":
+                        await stream.focus(bool(c.get("focused")))
 
-                source = item[0]
+        tasks = [asyncio.create_task(to_browser()), asyncio.create_task(to_core())]
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in tasks:
+            t.cancel()
+        if not stream.close_reason:
+            await stream.detach()  # leave the program running
+    except (ConnectionError, FileNotFoundError, CoreError) as e:
+        await _ws_send_error(ws, e)
+    finally:
+        if core:
+            await core.close()
 
-                if source == "perm":
-                    # Forward permission request to browser immediately
-                    yield item[1]
-                    continue
 
-                # source == "claude"
-                _, event_type, payload = item
+# ── pages ───────────────────────────────────────────────────────────────
+@app.get("/")
+async def index():
+    page = STATIC / "index.html"
+    return FileResponse(page) if page.exists() else HTMLResponse("<h1>LCARS Claude</h1>")
 
-                if event_type is None:  # sentinel — CLI finished
-                    break
 
-                if event_type == "session":
-                    conv.claude_session_id = payload["session_id"]
-                    store._save()
-                    yield {"event": "session", "data": json.dumps(payload)}
-                elif event_type == "text":
-                    collected_text.append(payload["text"])
-                    yield {"event": "text", "data": json.dumps(payload)}
-                elif event_type == "thinking":
-                    yield {"event": "thinking", "data": json.dumps(payload)}
-                elif event_type == "tool_use":
-                    yield {"event": "tool_use", "data": json.dumps(payload)}
-                elif event_type == "result_error":
-                    yield {"event": "error", "data": json.dumps({"error": payload["error"]})}
-                elif event_type == "usage":
-                    yield {"event": "usage", "data": json.dumps(payload)}
-
-            await task
-
-            full_text = "\n".join(collected_text)
-            conv.add_assistant_message([{"type": "text", "text": full_text}])
-            store._save()
-
-            yield {"event": "done", "data": json.dumps({
-                "conversation_id": conv.id,
-                "title": conv.title,
-            })}
-
-        except asyncio.CancelledError:
-            logger.info("Client disconnected")
-        except Exception as e:
-            logger.error(f"Chat error: {e}", exc_info=True)
-            yield {"event": "error", "data": json.dumps({"error": str(e)})}
-        finally:
-            active_perm_queues.pop(conv.id, None)
-
-    return EventSourceResponse(generate())
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
