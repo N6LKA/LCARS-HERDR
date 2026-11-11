@@ -7,6 +7,7 @@
 @font-face{font-family:"Hack";src:url(/static/fonts/Hack-Bold.woff2) format("woff2");font-weight:700;font-display:block}
 
 :root{
+  color-scheme:dark;   /* this page is already dark: tells the browser not to darken it again */
   --orange:#ff9966;--peach:#ff9966;--tan:#ffcc99;--lilac:#cc99cc;--violet:#9999ff;--sky:#99ccff;--gold:#ffcc66;--red:#ff5544;--gray:#666688;
   --tabdim:#9977aa;--hdr:#34343f;--hdrtext:#b8b8c8;
   --s-working:var(--gold);--s-blocked:var(--red);--s-done:var(--sky);--s-idle:var(--violet);--s-live:var(--gray);--s-ended:#444;
