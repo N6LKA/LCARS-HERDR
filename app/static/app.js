@@ -821,7 +821,7 @@ class Pane {
 }
 
 // ── rendering ─────────────────────────────────────────────────────────
-function render() { renderTabs(); renderSpaces(); renderAgents(); renderUnplaced(); renderPanes(); renderFoot(); }
+function render() { renderTabs(); renderSpaces(); renderAgents(); renderUnplaced(); renderPanes(); renderFoot(); if (typeof panelSync === 'function') panelSync(); }
 
 function stateMark(state) { return `<span class="mk" data-state="${state}" style="--c:${STATUS_COLOR[state]}">${BARS}</span>`; }
 function renderTabs() {
@@ -1006,6 +1006,7 @@ function init() {
   };
   $('#space-add').onclick = () => run('space.new');
   $('#search-btn').onclick = openPicker;
+  initPanel();
   $('#side-btn').onclick = $('#side-show').onclick = () => run('layout.toggle_sidebar');
   const pk = $('#pick-input');
   pk.addEventListener('input', () => fillPicker(pk.value));

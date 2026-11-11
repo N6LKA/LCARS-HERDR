@@ -32,7 +32,7 @@
     <button id="side-show" title="Show the sidebar (Ctrl+Shift+B)" aria-label="Show sidebar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <div id="tabs" role="tablist"></div>
     <button class="pill peach" id="tab-add" title="New tab">+</button>
-    <div id="topbar-fill"><span id="top-info"></span></div>
+    <div id="topbar-fill"><span id="top-info"></span><button id="btn-files" class="tbtn" title="Files (Ctrl+Alt+F)">FILES</button><button id="btn-changes" class="tbtn" title="Git changes (Ctrl+Alt+G)">CHANGES</button></div>
     <span id="top-cap"></span>
   </header>
 
@@ -71,16 +71,24 @@
   </aside>
 
   <main id="main">
-    <div id="panes"></div>
-    <div id="empty">
-      <h2>THIS TAB IS EMPTY</h2>
-      <p>Start a Claude session or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
+    <div id="mainc">
+      <div id="panes"></div>
+      <div id="empty">
+        <h2>THIS TAB IS EMPTY</h2>
+        <p>Start a Claude session or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
+      </div>
+      <div id="keybar" aria-label="Touch keys">
+        <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
+        <button data-k="ctrl-c">^C</button><button data-k="up">▲</button><button data-k="down">▼</button>
+        <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="enter">⏎</button>
+      </div>
     </div>
-    <div id="keybar" aria-label="Touch keys">
-      <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
-      <button data-k="ctrl-c">^C</button><button data-k="up">▲</button><button data-k="down">▼</button>
-      <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="enter">⏎</button>
-    </div>
+    <div id="pdiv" hidden title="Drag to resize · double-click to reset"></div>
+    <aside id="panel" hidden>
+      <div id="p-head"><button id="p-back" hidden title="Back to the list">←</button><span id="p-title">FILES</span><span id="p-sub"></span><button id="p-close" title="Close the panel">×</button></div>
+      <div id="p-body"></div>
+      <div id="p-foot" hidden><input id="c-msg" placeholder="Commit message" maxlength="200" autocomplete="off"><button id="c-btn" class="pill peach small">COMMIT</button><span id="c-note"></span></div>
+    </aside>
   </main>
 
   <footer id="foot">
@@ -140,6 +148,7 @@
 <script src="/static/vendor/addon-web-links.js"></script>
 <script src="/static/vendor/addon-unicode11.js"></script>
 <script src="/static/vendor/addon-webgl.js"></script>
+<script src="/static/panel.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
