@@ -198,7 +198,13 @@ class Pane {
     ws.onmessage = ev => {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (m.type === 'closed') { this.ended = true; this.term.write('\r\n\x1b[38;5;208m[ terminal ended ]\x1b[0m\r\n'); }
+        if (m.type === 'closed') {
+          this.ended = true;
+          const r = m.reason || {};
+          this.term.write('\r\n\x1b[38;5;208m[ terminal ended ]\x1b[0m\r\n');
+          // A clean exit or an end-it-yourself closes the pane; a crash stays so its last output can be read.
+          if (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code)) setTimeout(() => removePane(this.addr), 600);
+        }
         else if (m.type === 'error') { this.term.write(`\r\n\x1b[31m[ ${m.error} ]\x1b[0m\r\n`); this.ended = true; }
         return;
       }
