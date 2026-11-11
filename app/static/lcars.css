@@ -136,7 +136,7 @@ body.side-hidden #side-show{display:grid}
 @media (prefers-reduced-motion:reduce){.tri i,.mk i,.agent .blk,.pane.blocked{animation:none!important}}
 
 /* ── panes: a tree of splits ─────────────────────────────────────── */
-#main{grid-area:main;position:relative;min-height:0;display:flex;flex-direction:row}
+#main{margin:calc(var(--step) - 4px) 0;grid-area:main;position:relative;min-height:0;display:flex;flex-direction:row}
 #mainc{flex:1;min-width:0;min-height:0;position:relative;display:flex;flex-direction:column;gap:4px}
 #panes{flex:1;min-height:0;display:flex}
 .split{display:flex;flex:1 1 0;min-width:0;min-height:0}
@@ -298,6 +298,7 @@ body.wco #top button,body.wco #tabs,body.wco #elbow button,body.wco #topbar-fill
   #side{position:fixed;margin:0;z-index:20;top:0;left:0;bottom:0;width:min(300px,90vw);background:#000;padding:6px 6px 6px 0;transform:translateX(-102%);transition:transform .2s}
   body.side-open #side{transform:none}
   #side-show{display:none!important}
+  #main{margin:0}
   #sdiv{display:none}
   #menu-btn{display:block;flex:none;background:var(--orange);color:#000;border-radius:14px 0 0 14px;padding:0 14px;font-size:24px}
   #topbar-fill,#top-cap{display:none}
