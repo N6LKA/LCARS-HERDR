@@ -1,83 +1,56 @@
-# LCARS Claude Interface
+# LCARS
 
-A Picard-era LCARS-styled web interface for Claude Code, with full MCP tool support, streaming responses, and clipboard image paste.
+A Star Trek LCARS-styled web console for the coding-agent terminals running on a server.
+It does not talk to any model itself: it shows the real terminals that
+[herdr-core](https://github.com/herdrdev/herdr-core) keeps alive on the machine, so Claude Code,
+GitHub Copilot, Codex and other agents run exactly as they do in a terminal, with their own tools and
+logins, and keep running when you close the page.
 
-## Features
+## What you get
 
-- **Picard LCARS aesthetic** — dark blue/cyan theme inspired by Star Trek: Picard
-- **All MCP tools** — auto-discovers servers from your existing `~/.claude.json`
-- **Streaming responses** — real-time token streaming via SSE
-- **Clipboard image paste** — Ctrl+V to paste screenshots directly
-- **Alt+Enter** for multi-line input, Enter to send
-- **Multi-conversation** — manage multiple sessions in the sidebar
-- **Local network** — runs on your server, browser connects direct over LAN (fast)
+- **Spaces, tabs and split panes**, the same model as the Herdr desktop app: split right or down, drag
+  dividers, drag a pane by its header to move or swap it, zoom, rename, close.
+- **Live agent status** (working, needs you, done, idle) with moving bars and alert sounds.
+- **An agents menu** that starts any installed agent beside the focused pane, and shows setup steps for the
+  ones that are not installed yet.
+- **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use SEND FILE. The file is
+  placed beside the terminal and its path is pasted in.
+- **Keyboard shortcuts and menus** after Herdr's defaults: right-click a pane, tab or space; Ctrl+Shift+P for
+  every command; Ctrl+Shift+K to find a space, tab or agent; F1 lists every shortcut.
+- **Layout shared between browsers** (stored in the core). Installable as an app from the browser.
 
-## Requirements
+## How it fits together
 
-- Python 3.10+
-- An Anthropic API key
-- Claude Code already configured with MCP servers (reads `~/.claude.json`)
+```
+browser  ->  FastAPI server (this repo, :7842)  ->  herdr-core socket  ->  real terminals
+```
 
-## Quick Install
+- `app/core_client.py` speaks herdr-core's JSON-RPC and framed-stream protocol.
+- `app/main.py` is the web server: REST for terminals, WebSockets for live terminal streams and events,
+  uploads, and the layout document.
+- `app/agents.py` is the list of known coding agents (how to start them, how to install and sign in).
+- `app/static/` is the page (xterm.js, no build step).
+
+## Run
+
+Needs Python 3.10+, herdr-core running on the same machine, and `pip install -r requirements.txt`.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/N6LKA/lcars-claude/main/install.sh)
+cp .env.example .env     # set LCARS_TOKEN to a long random string
+python3 run.py           # serves on :7842
 ```
 
-Then edit `/opt/lcars-claude/.env` and add your API key:
+Access needs the token (cookie or Bearer). Behind a proxy that has already signed people in (for example
+Nginx Proxy Manager with Authelia), set `LCARS_TRUSTED_PROXIES` to the proxy's address and
+`LCARS_PROXY_HOSTS` to the host names it serves. Everything else is refused.
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
+## Safety
 
-Start the service:
+This is a shell on the machine. Keep it behind a login, never expose it directly to the internet, and keep
+each agent's approval prompts on.
 
-```bash
-systemctl start lcars-claude
-```
+## Licences
 
-Open in browser: `http://YOUR-SERVER-IP:7842`
-
-## Update
-
-```bash
-bash /opt/lcars-claude/install.sh
-systemctl restart lcars-claude
-```
-
-## Manual Run (dev)
-
-```bash
-git clone https://github.com/N6LKA/lcars-claude.git
-cd lcars-claude
-pip install -r requirements.txt
-cp .env.example .env
-# edit .env and set ANTHROPIC_API_KEY
-python3 run.py
-```
-
-## Configuration
-
-All config via `/opt/lcars-claude/.env`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | required | Your Anthropic API key |
-| `ANTHROPIC_MODEL` | `claude-opus-4-8` | Model to use |
-| `CLAUDE_CONFIG_PATH` | `~/.claude.json` | Path to Claude Code config (for MCP discovery) |
-| `PORT` | `7842` | Port to listen on |
-| `HOST` | `0.0.0.0` | Host to bind to |
-
-## Adding to NGINX/Authelia
-
-To expose externally with SSO, proxy `http://127.0.0.1:7842` through your existing NPM/Authelia setup.
-
-## Architecture
-
-```
-Browser (LAN) → FastAPI (port 7842 on server)
-                    ├── Reads ~/.claude.json for MCP servers
-                    ├── Connects to each MCP server
-                    ├── Streams responses via SSE
-                    └── Anthropic API (for inference only)
-```
+Apache-2.0 herdr-core and Herdr app inspire the model and shortcuts. xterm.js (MIT) is vendored under
+`app/static/vendor`; Antonio (SIL OFL 1.1) is in `app/static/fonts`. The look is an unofficial fan-styled
+interpretation of LCARS from Star Trek, with no affiliation.

@@ -1,4 +1,4 @@
-"""The coding agents LCARS Claude knows how to start, and how a person installs and signs in to each.
+"""The coding agents LCARS knows how to start, and how a person installs and signs in to each.
 
 Nothing here installs anything. The install and sign-in steps are shown to the person, who runs them.
 Steps come from each vendor's own documentation (read 2026-11-10); check the vendor page if one no longer works.

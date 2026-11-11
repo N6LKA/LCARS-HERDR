@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "LCARS Claude",
+  "name": "LCARS",
   "short_name": "LCARS",
-  "description": "LCARS console for the Claude Code terminals on this server",
+  "description": "LCARS console for the coding-agent terminals on this server",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -21,5 +21,9 @@
       "type": "image/png",
       "purpose": "any"
     }
+  ],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
   ]
 }

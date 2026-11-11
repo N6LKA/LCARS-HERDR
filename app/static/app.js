@@ -1,5 +1,5 @@
 'use strict';
-/* LCARS Claude front end: spaces of tabs of split panes, each pane a live herdr-core terminal.
+/* LCARS front end: spaces of tabs of split panes, each pane a live herdr-core terminal.
    The model, commands, shortcuts and menus follow the Herdr desktop app (Apache-2.0, herdrdev/herdr-app). */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -8,7 +8,9 @@ const DOC = new URLSearchParams(location.search).get('doc') || 'lcars-web';
 const STATUS_WORD = { working: 'WORKING', blocked: 'NEEDS YOU', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
 const STATUS_COLOR = { working: 'var(--s-working)', blocked: 'var(--s-blocked)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
-const ORDER = { blocked: 0, working: 1, done: 2, idle: 3, live: 4, ended: 5 };
+const ORDER = { blocked: 0, done: 1, working: 2, idle: 3, live: 4, ended: 5 };
+const GROUPS = [['blocked', 'NEEDS YOU'], ['done', 'DONE'], ['working', 'WORKING'], ['idle', 'IDLE'], ['live', 'LIVE']];
+const pad2 = n => String(n).padStart(2, '0');
 const SPACE_COLORS = ['var(--tan)', 'var(--lilac)', 'var(--peach)', 'var(--sky)', 'var(--violet)', 'var(--gold)'];
 const BARS = '<i></i><i></i><i></i><i></i>';
 const TRICORDER = `<span class="tri">${BARS}</span>`;
@@ -29,6 +31,8 @@ const S = {
   autoOpen: localStorage.getItem('lcars-autoopen') !== 'off',
   agents: [],            // coding agents this server knows, with an installed flag (from /api/agents)
   agentEnv: '',
+  coreName: '',          // this server's core name, shown as the machine
+  linkOk: false,
   remoteVersion: 0,      // newest layout version another browser announced
   saving: false,
 };
@@ -55,7 +59,14 @@ function toast(msg, err = false) {
 const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : ((t.status && t.status.state) || 'live');
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
 const agentById = id => S.agents.find(a => a.id === id);
-const labelOf = t => (t.labels && t.labels.title) || t.name || (t.labels && t.labels.agent && (agentById(t.labels.agent) || {}).name) || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
+const PROGRAMS = { claude: 'Claude Code', 'claude-code': 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex', grok: 'Grok', opencode: 'OpenCode',
+  'cursor-agent': 'Cursor Agent', agent: 'Cursor Agent', amp: 'Amp', pi: 'Pi', agy: 'Antigravity', gemini: 'Gemini CLI',
+  bash: 'Shell', zsh: 'Shell', sh: 'Shell', fish: 'Shell', dash: 'Shell' };
+function programName(t) {   // what is running in it right now, e.g. "Claude Code" or "Shell"
+  const p = ((t.foreground && t.foreground.name) || (t.argv && t.argv[0]) || '').split('/').pop();
+  return PROGRAMS[p] || p || 'Terminal';
+}
+const labelOf = t => (t.labels && t.labels.title) || t.name || (t.labels && t.labels.agent && (agentById(t.labels.agent) || {}).name) || programName(t) || t.address;
 const folderOf = t => (((t.foreground && t.foreground.cwd) || t.cwd || '').split('/').filter(Boolean).pop()) || '/';
 const cwdOf = addr => { const t = S.terms.get(addr); return t ? ((t.foreground && t.foreground.cwd) || t.cwd) : undefined; };
 function ageOf(t) {
@@ -114,8 +125,8 @@ function folderAutoName(sp) {
 }
 function tabName(tab, i) {
   if (tab.name) return tab.name;
-  const a = leaves(tab.root)[0], t = a && S.terms.get(a);
-  return t ? labelOf(t).toUpperCase() : `TAB ${i + 1}`;
+  for (const a of leaves(tab.root)) { const t = S.terms.get(a); if (t) return labelOf(t).toUpperCase(); }
+  return `TAB ${i + 1}`;
 }
 
 // ── persistence (a document in herdr-core, shared by every browser) ───
@@ -384,9 +395,10 @@ const bind = (combo, id) => KEYS.push([combo, id]);
 const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
 
 def('app.palette', 'Command palette', () => openPalette(), 'App');
+def('app.picker', 'Find a space, tab or agent…', () => openPicker(), 'App');
 def('app.help', 'Keyboard shortcuts', () => openHelp(), 'App');
 def('agent.menu', 'Start another coding agent…', () => agentsMenu(Math.max(20, innerWidth / 2 - 110), 110), 'Agents');
-def('app.install', 'Install LCARS Claude as an app', () => installApp(), 'App');
+def('app.install', 'Install LCARS as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
 def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font + 1); applyFont(); }, 'App');
 def('app.zoom_out', 'Smaller terminal text', () => { S.font = Math.max(9, S.font - 1); applyFont(); }, 'App');
@@ -439,7 +451,7 @@ for (let n = 1; n <= 9; n++) {
  ['ctrl+shift+question', 'app.help'], ['ctrl+question', 'app.help'], ['f1', 'app.help'],
  ['ctrl+shift+b', 'layout.toggle_sidebar'], ['ctrl+shift+n', 'space.new'], ['ctrl+alt+n', 'space.new'],
  ['ctrl+shift+t', 'tab.new'], ['ctrl+alt+t', 'tab.new'], ['ctrl+shift+w', 'tab.close'], ['ctrl+alt+w', 'tab.close'],
- ['ctrl+shift+p', 'app.palette'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
+ ['ctrl+shift+p', 'app.palette'], ['ctrl+shift+k', 'app.picker'], ['ctrl+alt+k', 'app.picker'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
  ['ctrl+shift+x', 'pane.close'], ['ctrl+shift+z', 'pane.zoom'], ['f2', 'tab.rename'], ['ctrl+alt+r', 'pane.rename'], ['shift+f2', 'space.rename'], ['ctrl+shift+c', 'terminal.copy'],
 ].forEach(([k, c]) => bind(k, c));
 const KEYNAME = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', PageUp: 'pageup', PageDown: 'pagedown', Tab: 'tab', Escape: 'esc', Enter: 'enter', ' ': 'space',
@@ -579,6 +591,35 @@ function showAgentInfo(a) {
   para('Steps are from the vendor documentation read on 2026-11-10. If one fails, check the vendor page.');
   const d = $('#info-dlg'); d.showModal(); d.scrollTop = 0;
 }
+let pickSel = 0, pickItems = [];
+function pickerData() {
+  const items = [];
+  S.spaces.forEach((sp, i) => items.push({ kind: 'SPACE', label: spaceName(sp, i), sub: `${sp.tabs.length} TAB${sp.tabs.length === 1 ? '' : 'S'}`, run: () => selectSpace(sp.id) }));
+  S.spaces.forEach(sp => sp.tabs.forEach((tab, i) => items.push({ kind: 'TAB', label: tabName(tab, i), sub: spaceName(sp, S.spaces.indexOf(sp)),
+    run: () => { S.active = sp.id; sp.tab = tab.id; S.focus = leaves(tab.root)[0] || null; commit(); focusPane(S.focus); } })));
+  for (const t of agentList()) items.push({ kind: 'AGENT', label: labelOf(t), sub: `${folderOf(t)} · ${STATUS_WORD[stateOf(t)]}`, run: () => focusAddr(t.address) });
+  for (const t of S.terms.values()) if (!isAgent(t)) items.push({ kind: 'TERMINAL', label: labelOf(t), sub: `${folderOf(t)} · ${t.address}`, run: () => focusAddr(t.address) });
+  return items;
+}
+function openPicker() { const d = $('#pick-dlg'), i = $('#pick-input'); i.value = ''; fillPicker(''); d.showModal(); i.focus(); }
+function fillPicker(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean), list = $('#pick-list'); list.textContent = '';
+  pickItems = pickerData().filter(it => { const hay = `${it.kind} ${it.label} ${it.sub}`.toLowerCase(); return words.every(w => hay.includes(w)); });
+  pickSel = 0;
+  pickItems.forEach((it, i) => {
+    const row = document.createElement('div'); row.className = 'pal-item' + (i === 0 ? ' sel' : '');
+    row.innerHTML = '<span><span class="kind"></span><span class="lb"></span></span><kbd></kbd>';
+    $('.kind', row).textContent = it.kind; $('.lb', row).textContent = it.label; $('kbd', row).textContent = it.sub;
+    row.onclick = () => runPicker(i); list.appendChild(row);
+  });
+  if (!pickItems.length) list.innerHTML = '<div class="pal-item"><span>NOTHING MATCHES</span></div>';
+}
+function runPicker(i) { const it = pickItems[i]; if (!it) return; $('#pick-dlg').close(); setTimeout(it.run, 30); }
+function movePick(d) {
+  const rows = [...$('#pick-list').children]; if (!rows.length || !pickItems.length) return;
+  rows[pickSel].classList.remove('sel'); pickSel = (pickSel + d + rows.length) % rows.length;
+  rows[pickSel].classList.add('sel'); rows[pickSel].scrollIntoView({ block: 'nearest' });
+}
 let palSel = 0, palItems = [];
 function openPalette() {
   const d = $('#pal-dlg'), input = $('#pal-input'); input.value = ''; fillPalette(''); d.showModal(); input.focus();
@@ -669,9 +710,9 @@ class Pane {
     this.el = document.createElement('div');
     this.el.className = 'pane'; this.el.dataset.addr = addr;
     this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span>${TRICORDER}<span class="st"></span>
-      <button data-a="split_right" title="Split right">▥</button><button data-a="split_down" title="Split down">▤</button>
-      <button data-a="zoom" title="Zoom">⤢</button><button data-a="file" title="Send a file">FILE</button>
-      <button data-a="close" class="close" title="Close pane (ends its terminal)">✕</button></div>
+      <button data-a="split_right" title="Split right">SPLIT R</button><button data-a="split_down" title="Split down">SPLIT D</button>
+      <button data-a="zoom" title="Zoom">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
+      <button data-a="close" class="close" title="Close pane (ends its terminal)">CLOSE</button></div>
       <div class="pane-b"><span class="pane-msg">RECONNECTING</span></div>`;
     this.body = $('.pane-b', this.el);
     this.term = new Terminal({
@@ -786,7 +827,8 @@ function renderTabs() {
     const st = topState(leaves(tab.root));
     const b = document.createElement('div');
     b.className = 'tab' + (tab.id === sp.tab ? ' on' : ''); b.dataset.state = st; b.draggable = true;
-    b.innerHTML = '<span class="nm"></span>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '') + '<button class="x" title="Close tab">×</button>';
+    b.innerHTML = '<span class="num"></span><span class="nm"></span>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '') + '<button class="x" title="Close tab">×</button>';
+    $('.num', b).textContent = pad2(i + 1);
     $('.nm', b).textContent = tabName(tab, i) + (S.zoomed[tab.id] ? ' Z' : '');
     b.onclick = ev => { if (ev.target.classList.contains('x')) closeTab(tab.id); else selectTab(tab.id); };
     b.ondblclick = ev => { if (!ev.target.classList.contains('x')) renameTab(tab.id); };
@@ -818,13 +860,18 @@ function renderSpaces() {
     row.ondrop = ev => { ev.preventDefault(); row.classList.remove('drop-before'); moveInList(S.spaces, Number(ev.dataTransfer.getData('text/x-space')), i); commit(); };
     box.appendChild(row);
   });
+  $('#spaces-count').textContent = pad2(S.spaces.length);
+  $('#machine-name').textContent = (S.coreName || '—').toUpperCase();
 }
 function renderAgents() {
   const box = $('#agents'); box.textContent = '';
-  const list = agentList(), n = s => list.filter(t => stateOf(t) === s).length;
-  $('#agents-title').textContent = list.length ? `AGENTS · ${n('working')} WORKING${n('blocked') ? ` · ${n('blocked')} NEED YOU` : ''}` : 'AGENTS';
+  const list = agentList();
+  $('#agents-count').textContent = pad2(list.length);
+  const header = (st, word, count) => { const h = document.createElement('div'); h.className = 'grp'; h.style.setProperty('--c', STATUS_COLOR[st]); h.textContent = `${word} · ${count}`; box.appendChild(h); };
+  let lastGroup = null;
   for (const t of list) {
     const st = stateOf(t), loc = locate(t.address);
+    if (st !== lastGroup) { lastGroup = st; header(st, (GROUPS.find(g => g[0] === st) || [st, st.toUpperCase()])[1], list.filter(x => stateOf(x) === st).length); }
     const row = document.createElement('div');
     row.className = 'row agent' + (loc && loc.sp.id === S.active ? ' in' : '') + (t.address === S.focus ? ' here' : '');
     row.dataset.state = st; row.style.setProperty('--c', STATUS_COLOR[st]);
@@ -910,8 +957,11 @@ function renderPanes() {
   requestAnimationFrame(() => P.forEach(p => p.refit()));
 }
 function renderFoot() {
-  const all = [...S.terms.values()].map(stateOf), n = s => all.filter(x => x === s).length;
-  $('#f-counts').textContent = `${all.length} TERMINALS · ${n('working')} WORKING · ${n('blocked')} NEED YOU · ${n('done')} DONE`;
+  const agents = agentList(), blocked = agents.filter(t => stateOf(t) === 'blocked').length;
+  $('#f-machine').textContent = (S.coreName || '').toUpperCase();
+  $('#f-spaces').textContent = `${S.spaces.length} SPACE${S.spaces.length === 1 ? '' : 'S'}`;
+  const fa = $('#f-agents'); fa.textContent = `${agents.length} AGENT${agents.length === 1 ? '' : 'S'}${blocked ? ` · ${blocked} NEED YOU` : ''}`; fa.classList.toggle('warn', blocked > 0);
+  const sp = curSpace(); $('#top-info').textContent = `${sp ? spaceName(sp, S.spaces.indexOf(sp)) : ''}${S.coreName ? ' · ' + S.coreName.toUpperCase() : ''}`;
 }
 
 // ── event feed ────────────────────────────────────────────────────────
@@ -921,7 +971,7 @@ function connectEvents() {
   ws.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'snapshot') $('#f-core').textContent = `CORE · SEQ ${m.seq}`;
+    if (m.type === 'snapshot') $('#conn').title = `Live connection to the server (event ${m.seq})`;
     else if (m.type === 'notification' && m.method === 'event') {
       const e = m.params || {};
       if (e.type === 'doc') { if (e.data && e.data.name === DOC) { S.remoteVersion = Math.max(S.remoteVersion, e.data.version || 0); maybeSync(); } }
@@ -931,7 +981,7 @@ function connectEvents() {
   };
   ws.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
-function setConn(ok) { const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'pill ' + (ok ? 'ok' : 'bad'); }
+function setConn(ok) { S.linkOk = ok; const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'chip sky' + (ok ? '' : ' bad'); $('#machine').style.setProperty('--dot', ok ? '#44cc44' : '#ff5544'); }
 
 // ── wiring ────────────────────────────────────────────────────────────
 const KEYSEQ = { esc: '\x1b', tab: '\t', 'ctrl-c': '\x03', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r' };
@@ -952,6 +1002,15 @@ function init() {
     showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
   };
   $('#space-add').onclick = () => run('space.new');
+  $('#search-btn').onclick = openPicker;
+  $('#side-btn').onclick = $('#side-show').onclick = () => run('layout.toggle_sidebar');
+  const pk = $('#pick-input');
+  pk.addEventListener('input', () => fillPicker(pk.value));
+  pk.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); movePick(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); movePick(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); runPicker(pickSel); }
+  });
+  setupTitlebar();
   $('#agents-btn').onclick = ev => { const r = ev.currentTarget.getBoundingClientRect(); agentsMenu(r.right + 6, r.top); };
   $('#info-close').onclick = () => $('#info-dlg').close();
   $('#info-shell').onclick = () => { $('#info-dlg').close(); openBeside('shell', { cwd: cwdOf(S.focus) }); };
@@ -1000,8 +1059,23 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 window.addEventListener('appinstalled', () => { installEvt = null; showInstall(); toast('INSTALLED'); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
 
+// Installed as an app with the title bar merged into our top bar (Window Controls Overlay): keep clear of the
+// system's own minimize / maximize / close buttons, which stay at the window's edge.
+function setupTitlebar() {
+  const w = navigator.windowControlsOverlay; if (!w) return;
+  const apply = () => {
+    document.body.classList.toggle('wco', !!w.visible);
+    if (w.visible) { const r = w.getTitlebarAreaRect(); document.documentElement.style.setProperty('--wco-right', Math.max(0, innerWidth - r.x - r.width) + 'px'); }
+  };
+  apply(); w.addEventListener('geometrychange', apply);
+}
+async function loadStatus() {
+  try { const r = await api('/api/status'); S.coreName = (r.core && r.core.name) || ''; } catch {}
+}
+
 (async function main() {
   init();
+  loadStatus().then(() => { if (S.spaces.length) render(); });
   $('#install-btn').onclick = installApp;
   loadAgents().then(() => { if (S.spaces.length) render(); });   // names in the lists; wait until the layout has loaded
   await loadLayout();

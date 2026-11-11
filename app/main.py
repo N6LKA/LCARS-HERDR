@@ -1,4 +1,4 @@
-"""LCARS Claude: a web front end for the terminals herdr-core runs.
+"""LCARS: a web front end for the terminals herdr-core runs.
 
 The browser never talks to Claude directly. It attaches to real `claude`
 terminals that live in herdr-core on this machine, so MCP tools load once and
@@ -38,7 +38,7 @@ MAX_UPLOAD = 8 * 1024 * 1024  # terminal.put accepts at most 8 MB raw
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
 XTERM_ENV = {"TERM": "xterm-256color", "COLORTERM": "truecolor"}
 
-app = FastAPI(title="LCARS Claude", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="LCARS", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # ── auth ────────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ async def guard(request: Request, call_next):
 
 
 LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>LCARS Claude</title><style>
+<title>LCARS</title><style>
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
 form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
@@ -429,7 +429,7 @@ async def ws_term(ws: WebSocket, terminal: str, cols: int = 120, rows: int = 32,
 
 
 # ── pages ───────────────────────────────────────────────────────────────
-SW_JS = """// Keeps LCARS Claude installable as an app. It caches nothing and answers no request itself,
+SW_JS = """// Keeps LCARS installable as an app. It caches nothing and answers no request itself,
 // so a new version is never hidden behind an old copy. It also clears caches an older version left.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil((async () => {
@@ -454,7 +454,7 @@ async def index():
     """
     page = STATIC / "index.html"
     if not page.exists():
-        return HTMLResponse("<h1>LCARS Claude</h1>")
+        return HTMLResponse("<h1>LCARS</h1>")
 
     def tag(m):
         f = STATIC / m.group(1)
