@@ -784,11 +784,42 @@ class Pane {
       if (a === 'file') { setFocusQuiet(addr); $('#file-input').click(); }
       else run(a === 'close' ? 'pane.close' : a === 'zoom' ? 'pane.zoom' : `pane.${a}`, addr);
     });
+    this.touchScroll();
     this.body.addEventListener('paste', ev => this.onPaste(ev), true);
     ['dragenter', 'dragover'].forEach(n => this.el.addEventListener(n, ev => { if (hasFiles(ev)) { ev.preventDefault(); this.el.classList.add('drop'); } }));
     ['dragleave', 'drop'].forEach(n => this.el.addEventListener(n, () => this.el.classList.remove('drop')));
     this.el.addEventListener('drop', ev => { if (hasFiles(ev)) { ev.preventDefault(); this.sendFiles([...ev.dataTransfer.files]); } });
     this.connect();
+  }
+  // The terminal library does not scroll its history for a finger swipe, so a phone could never look back. Drag = scroll,
+  // with a little coast after letting go. A plain tap (no real movement) is left alone so it still opens the keyboard.
+  touchScroll() {
+    let y0 = null, last = 0, lastT = 0, v = 0, moved = false, rest = 0, raf = 0;
+    const lineH = () => Math.max(8, this.body.querySelector('.xterm-screen').getBoundingClientRect().height / this.term.rows);
+    const scroll = dy => { rest += dy / lineH(); const n = Math.trunc(rest); if (n) { rest -= n; this.term.scrollLines(-n); } };
+    this.body.addEventListener('touchstart', ev => {
+      cancelAnimationFrame(raf);
+      if (ev.touches.length !== 1) { y0 = null; return; }
+      y0 = last = ev.touches[0].clientY; lastT = ev.timeStamp; v = 0; moved = false; rest = 0;
+    }, { passive: true });
+    this.body.addEventListener('touchmove', ev => {
+      if (y0 === null || ev.touches.length !== 1) return;
+      const y = ev.touches[0].clientY;
+      if (!moved && Math.abs(y - y0) < 8) return;
+      moved = true; ev.preventDefault();
+      const dt = Math.max(1, ev.timeStamp - lastT); v = 0.8 * v + 0.2 * ((y - last) / dt * 16);   // px per frame
+      scroll(y - last); last = y; lastT = ev.timeStamp;
+    }, { passive: false });
+    const end = ev => {
+      if (y0 === null) return;
+      y0 = null;
+      if (moved) ev.preventDefault();   // a swipe is not a tap: do not focus the terminal or pop up the keyboard
+      if (!moved || Math.abs(v) < 2) return;
+      const coast = () => { v *= 0.95; if (Math.abs(v) < 0.5) return; scroll(v); raf = requestAnimationFrame(coast); };
+      raf = requestAnimationFrame(coast);
+    };
+    this.body.addEventListener('touchend', end, { passive: false });
+    this.body.addEventListener('touchcancel', () => { y0 = null; }, { passive: true });
   }
   refit() { try { if (this.el.isConnected && this.el.offsetParent) this.fit.fit(); } catch {} }
   send(msg) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(msg)); }

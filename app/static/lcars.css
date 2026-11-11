@@ -186,6 +186,7 @@ body.no-panes #empty{display:grid}
 .pane.focus .pane-h .close,.pane.blocked .pane-h .close{background:#ff7766;color:#000}
 @container (max-width:460px){.pane-h [data-a=split_right],.pane-h [data-a=split_down],.pane-h [data-a=zoom],.pane-h [data-a=file]{display:none}}
 .pane-b{flex:1;min-height:0;position:relative;padding:4px 0 0 6px;background:#000}
+.pane-b{touch-action:none}
 .pane-b .xterm{height:100%}
 .pane-b .xterm-viewport{background:#000!important}
 .pane-msg{position:absolute;right:10px;top:6px;z-index:3;padding:1px 10px;border-radius:11px;background:var(--red);color:#000;font-weight:700;font-size:13px;display:none}
