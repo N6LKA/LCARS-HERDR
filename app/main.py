@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import agents
 from .core_client import CLOSE, DATA, FOCUS, RESIZE, Core, CoreClosed, CoreError
 
 log = logging.getLogger("lcars")
@@ -183,7 +184,8 @@ async def list_terminals(all: bool = False):
 
 
 class NewTerminal(BaseModel):
-    kind: str = "claude"  # "claude" or "shell"
+    kind: str = "claude"  # "claude", "shell", or "agent" (with `agent` naming one from /api/agents)
+    agent: str | None = None
     name: str | None = None
     cwd: str | None = None
     cols: int = 120
@@ -194,8 +196,8 @@ class NewTerminal(BaseModel):
 
 @app.post("/api/terminals")
 async def new_terminal(body: NewTerminal):
-    if body.kind not in ("claude", "shell"):
-        raise HTTPException(422, "kind must be claude or shell")
+    if body.kind not in ("claude", "shell", "agent"):
+        raise HTTPException(422, "kind must be claude, shell or agent")
     if body.name and not NAME_RE.match(body.name):
         raise HTTPException(422, "name: 1-32 of a-z 0-9 _ . -")
     params: dict = {
@@ -206,6 +208,16 @@ async def new_terminal(body: NewTerminal):
     }
     if body.kind == "claude":
         params["argv"] = ["claude", *body.args]
+    elif body.kind == "agent":
+        # the command comes from our own list, never from the page
+        if body.agent not in agents.BY_ID:
+            raise HTTPException(422, "unknown agent")
+        argv = agents.argv_for(body.agent)
+        if not argv:
+            raise HTTPException(409, f"{agents.BY_ID[body.agent]['name']} is not installed on this server")
+        params["argv"] = argv
+        params["env"] = {**XTERM_ENV, **agents.extra_env()}
+        params["labels"] = {"app": "lcars", "kind": "agent", "agent": body.agent}
     if body.name:
         params["name"] = body.name
     if body.cwd:
@@ -273,6 +285,11 @@ class DocBody(BaseModel):
 @app.put("/api/doc/{name}")
 async def set_doc(name: str, body: DocBody, on: str | None = None):
     return await rpc("doc.set", {"name": name, "value": body.value, "version": body.version, **({"on": on} if on else {})})
+
+
+@app.get("/api/agents")
+async def list_agents():
+    return {"agents": agents.listing(), "env_file": str(agents.ENV_FILE)}
 
 
 @app.get("/api/machines")

@@ -27,6 +27,8 @@ const S = {
   first: true,
   dismissed: new Set(),   // helpers the user closed or hid: never reopened automatically (saved with the layout)
   autoOpen: localStorage.getItem('lcars-autoopen') !== 'off',
+  agents: [],            // coding agents this server knows, with an installed flag (from /api/agents)
+  agentEnv: '',
   remoteVersion: 0,      // newest layout version another browser announced
   saving: false,
 };
@@ -51,8 +53,9 @@ function toast(msg, err = false) {
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
 const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : ((t.status && t.status.state) || 'live');
-const isAgent = t => !!(t.status && t.status.app) || (t.labels && t.labels.kind === 'claude');
-const labelOf = t => t.name || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
+const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
+const agentById = id => S.agents.find(a => a.id === id);
+const labelOf = t => t.name || (t.labels && t.labels.agent && (agentById(t.labels.agent) || {}).name) || (t.labels && t.labels.kind) || (t.argv && t.argv[0] && t.argv[0].split('/').pop()) || t.address;
 const folderOf = t => (((t.foreground && t.foreground.cwd) || t.cwd || '').split('/').filter(Boolean).pop()) || '/';
 const cwdOf = addr => { const t = S.terms.get(addr); return t ? ((t.foreground && t.foreground.cwd) || t.cwd) : undefined; };
 function ageOf(t) {
@@ -215,7 +218,7 @@ function play(name) {
   } catch {}
 }
 async function createTerminal(kind, opt = {}) {
-  const t = await post('/api/terminals', { kind, name: opt.name || undefined, cwd: opt.cwd || undefined, cols: 120, rows: 32 });
+  const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: opt.cwd || undefined, cols: 120, rows: 32 });
   S.terms.set(t.address, t); S.fresh.set(t.address, Date.now());
   return t.address;
 }
@@ -373,6 +376,7 @@ const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
 
 def('app.palette', 'Command palette', () => openPalette(), 'App');
 def('app.help', 'Keyboard shortcuts', () => openHelp(), 'App');
+def('agent.menu', 'Start another coding agent…', () => agentsMenu(Math.max(20, innerWidth / 2 - 110), 110), 'Agents');
 def('app.install', 'Install LCARS Claude as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
 def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font + 1); applyFont(); }, 'App');
@@ -467,6 +471,7 @@ function menuKeys(e) {
     ctxSel = (ctxSel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     items.forEach((x, i) => x.classList.toggle('sel', i === ctxSel));
   } else if (e.key === 'Enter' && ctxSel >= 0) { e.preventDefault(); e.stopPropagation(); items[ctxSel].click(); }
+  else if (/^[1-9]$/.test(e.key)) { const row = ctxEl.querySelector(`.it[data-key="${e.key}"]`); if (row) { e.preventDefault(); e.stopPropagation(); row.click(); } }
 }
 function showMenu(x, y, items) {
   closeMenu();
@@ -474,8 +479,9 @@ function showMenu(x, y, items) {
   for (const it of items) {
     if (it === '-') { m.appendChild(document.createElement('hr')); continue; }
     if (it.show === false) continue;
-    const row = document.createElement('div'); row.className = 'it' + (it.off ? ' off' : '');
-    const hint = it.cmd ? hintOf(it.cmd) : '';
+    const row = document.createElement('div'); row.className = 'it' + (it.off ? ' off' : '') + (it.dim ? ' dim' : '');
+    if (it.key) row.dataset.key = it.key;
+    const hint = it.key || (it.cmd ? hintOf(it.cmd) : '');
     row.innerHTML = '<span></span>' + (hint ? '<kbd></kbd>' : '');
     $('span', row).textContent = it.label; if (hint) $('kbd', row).textContent = hint;
     row.onclick = () => { closeMenu(); if (it.fn) it.fn(); else run(it.cmd, it.arg); };
@@ -530,6 +536,37 @@ async function pasteClip() {
     }
     const t = await navigator.clipboard.readText(); if (t) p.term.paste(t); p.term.focus();
   } catch { toast('Allow clipboard access, or press Ctrl+V', true); }
+}
+async function loadAgents() {
+  try { const d = await api('/api/agents'); S.agents = d.agents; S.agentEnv = d.env_file; } catch {}
+}
+const startAgent = a => a.id === 'claude' ? openBeside('claude', { cwd: cwdOf(S.focus) }) : openBeside('agent', { agent: a.id, cwd: cwdOf(S.focus) });
+async function agentsMenu(x, y) {
+  await loadAgents();
+  const ok = S.agents.filter(a => a.installed), no = S.agents.filter(a => !a.installed), items = [];
+  ok.forEach((a, i) => items.push({ label: a.name, key: i < 9 ? String(i + 1) : undefined, fn: () => startAgent(a) }));
+  if (no.length) { items.push('-'); no.forEach(a => items.push({ label: `${a.name} · not installed`, dim: true, fn: () => showAgentInfo(a) })); }
+  items.push('-', { label: 'Setup and sign-in help…', fn: () => showMenu(x, y, S.agents.map(a => ({ label: a.name + (a.installed ? '' : ' · not installed'), dim: !a.installed, fn: () => showAgentInfo(a) }))) });
+  showMenu(x, y, items);
+}
+function showAgentInfo(a) {
+  $('#info-title').textContent = `${a.name} · ${a.installed ? 'INSTALLED' : 'NOT INSTALLED'}`;
+  const body = $('#info-body'); body.textContent = '';
+  const head = t => { const h = document.createElement('h4'); h.textContent = t; body.appendChild(h); };
+  const para = t => { const p = document.createElement('p'); p.className = 'ip'; p.textContent = t; body.appendChild(p); };
+  const code = c => {
+    const r = document.createElement('div'), k = document.createElement('code'), b = document.createElement('button');
+    r.className = 'icode'; k.textContent = c; b.textContent = 'COPY'; b.className = 'pill gold';
+    b.onclick = async () => { try { await navigator.clipboard.writeText(c); toast('COPIED'); } catch { toast('Select the text and copy it', true); } };
+    r.append(k, b); body.appendChild(r);
+  };
+  if (a.install.length) { head('INSTALL'); para('Run in a shell on this server (the OPEN A SHELL button below). It uses the same account as your other terminals.'); a.install.forEach(code); }
+  if (a.login.length) { head('SIGN IN'); a.login.forEach(l => l.startsWith('$ ') ? code(l.slice(2)) : para(l)); }
+  if (/_KEY|API/.test(a.login.join(' '))) para(`Keys go in ${S.agentEnv || '/root/.config/lcars-claude/agents.env'}, one KEY=value per line. Create the file yourself and make it readable only by root (chmod 600). Agents started from this menu get those values.`);
+  if (a.account) { head('ACCOUNT'); para(a.account); }
+  if (a.note) { head('NOTE'); para(a.note); }
+  para('Steps are from the vendor documentation read on 2026-11-10. If one fails, check the vendor page.');
+  const d = $('#info-dlg'); d.showModal(); d.scrollTop = 0;
 }
 let palSel = 0, palItems = [];
 function openPalette() {
@@ -901,6 +938,9 @@ function init() {
     showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
   };
   $('#space-add').onclick = () => run('space.new');
+  $('#agents-btn').onclick = ev => { const r = ev.currentTarget.getBoundingClientRect(); agentsMenu(r.right + 6, r.top); };
+  $('#info-close').onclick = () => $('#info-dlg').close();
+  $('#info-shell').onclick = () => { $('#info-dlg').close(); openBeside('shell', { cwd: cwdOf(S.focus) }); };
   $('#keys-btn').onclick = () => run('app.help');
   $('#f-hint').onclick = () => run('app.palette');
   $('#menu-btn').onclick = () => document.body.classList.toggle('side-open');
@@ -949,6 +989,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { s
 (async function main() {
   init();
   $('#install-btn').onclick = installApp;
+  loadAgents().then(() => { if (S.spaces.length) render(); });   // names in the lists; wait until the layout has loaded
   await loadLayout();
   // Learn which terminals still exist before drawing, so a pane is never opened on a dead one.
   try { await refreshTerms(); } catch (e) { toast(e.message, true); render(); }

@@ -35,6 +35,7 @@
     <div class="rail-foot">
       <button class="pill orange" id="new-claude">NEW CLAUDE</button>
       <button class="pill lilac" id="new-shell">NEW SHELL</button>
+      <button class="pill peach" id="agents-btn" title="Start another coding agent">MORE AGENTS ▾</button>
       <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
       <button class="pill tan" id="install-btn" hidden>INSTALL APP</button>
       <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button></div>
@@ -89,6 +90,11 @@
   <div class="row"><button class="pill orange" id="help-close">CLOSE</button></div>
 </dialog>
 
+<dialog id="info-dlg">
+  <h3 id="info-title"></h3>
+  <div id="info-body"></div>
+  <div class="row"><button class="pill sky" id="info-shell">OPEN A SHELL</button><button class="pill orange" id="info-close">CLOSE</button></div>
+</dialog>
 <div id="toast" role="status"></div>
 
 <script src="/static/vendor/xterm.js"></script>
