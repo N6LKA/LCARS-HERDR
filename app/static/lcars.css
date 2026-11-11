@@ -146,11 +146,11 @@ body.no-panes #empty{display:grid}
 .pane.blocked{border-color:var(--red);animation:alert-border 1.4s ease-in-out infinite}
 /* only the frame breathes; the terminal text stays steady so it can be read while an agent waits for you */
 @keyframes alert-border{50%{border-color:#6e2a24}}
-.pane-h{display:flex;align-items:center;gap:5px;height:29px;flex:none;padding:0 0 0 0;background:var(--hdr)}
-.pane.focus .pane-h{background:var(--orange)}
-.pane.blocked .pane-h{background:var(--red)}
+.pane-h{display:flex;align-items:center;gap:4px;height:29px;flex:none;padding:0;background:#000}
 .pane-h .cap{width:14px;height:100%;background:var(--c,var(--s-live));flex:none}
-.pane-h .title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--hdrtext)}
+.pane-h .title{flex:1;min-width:0;height:100%;display:flex;align-items:center;padding:0 10px;background:var(--hdr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--hdrtext)}
+.pane.focus .pane-h .title{background:var(--orange)}
+.pane.blocked .pane-h .title{background:var(--red)}
 .pane.focus .pane-h .title,.pane.blocked .pane-h .title{color:#000}
 .pane-h .tri{height:20px;width:22px;padding:0 3px 3px;background:none;align-self:center}
 .pane-h .st{font-size:14px;color:#000;background:var(--c,var(--s-live));border-radius:11px 0 0 11px;padding:0 11px;height:22px;line-height:22px;font-weight:700;flex:none}
