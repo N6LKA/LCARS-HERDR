@@ -417,8 +417,21 @@ async def service_worker():
 
 @app.get("/")
 async def index():
+    """The page, with every script and stylesheet tagged by its file time.
+
+    A browser that cached an older script keeps asking for the old address, so a new page
+    can never run against an old script: the tag changes whenever a file does.
+    """
     page = STATIC / "index.html"
-    return FileResponse(page) if page.exists() else HTMLResponse("<h1>LCARS Claude</h1>")
+    if not page.exists():
+        return HTMLResponse("<h1>LCARS Claude</h1>")
+
+    def tag(m):
+        f = STATIC / m.group(1)
+        return f'/static/{m.group(1)}?v={int(f.stat().st_mtime)}' if f.exists() else m.group(0)
+
+    html = re.sub(r'/static/([A-Za-z0-9_./-]+\.(?:js|css))(?=")', tag, page.read_text())
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
