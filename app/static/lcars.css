@@ -20,10 +20,15 @@ button{font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer
 [hidden]{display:none!important}
 
 /* ── frame ───────────────────────────────────────────────────────── */
-#app{display:grid;height:100dvh;padding:6px;gap:4px;
+#app{position:relative;display:grid;height:100dvh;padding:6px;gap:4px;
   grid-template-columns:var(--side) minmax(0,1fr);grid-template-rows:var(--topH) minmax(0,1fr) 32px;
   grid-template-areas:"elbow top" "side main" "foot foot"}
 body.side-hidden{--side:0px}
+/* drag the sidebar's right edge to resize it */
+#sdiv{position:absolute;z-index:6;left:calc(6px + var(--side) - 3px);width:10px;top:calc(6px + var(--topH) + 4px);bottom:calc(6px + 32px + 4px);cursor:col-resize}
+#sdiv::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;border-radius:2px;background:transparent}
+#sdiv:hover::after,#sdiv.active::after{background:var(--orange)}
+body.side-hidden #sdiv{display:none}
 body.side-hidden #side,body.side-hidden #elbow{display:none}
 body.side-hidden #app{grid-template-areas:"top top" "main main" "foot foot"}
 body.side-hidden #f-core{width:auto;padding-left:22px}
@@ -292,6 +297,7 @@ body.wco #top button,body.wco #tabs,body.wco #elbow button,body.wco #topbar-fill
   #side{position:fixed;margin:0;z-index:20;top:0;left:0;bottom:0;width:min(300px,90vw);background:#000;padding:6px 6px 6px 0;transform:translateX(-102%);transition:transform .2s}
   body.side-open #side{transform:none}
   #side-show{display:none!important}
+  #sdiv{display:none}
   #menu-btn{display:block;flex:none;background:var(--orange);color:#000;border-radius:14px 0 0 14px;padding:0 14px;font-size:24px}
   #topbar-fill,#top-cap{display:none}
   #keybar{display:flex}

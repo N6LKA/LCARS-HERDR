@@ -23,6 +23,28 @@ const MARK_COLOR = { A: '#7fd17f', M: '#ffcc66', D: '#ff7766', U: '#cc99cc' };
 const ICON_DIR = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.2l1.6 1.6h6.2a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>';
 const ICON_FILE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3.5 1.7h6l3 3v9.6h-9z"/><path d="M9.5 1.7v3h3"/></svg>';
 
+// Sidebar width: drag its right edge; remembered in this browser, double-click for the default.
+const SIDE = { def: 250, min: 200, max: 560, key: 'lcars-side-w' };
+function setSide(w, save) {
+  w = Math.round(Math.max(SIDE.min, Math.min(SIDE.max, w, window.innerWidth * 0.5)));
+  document.documentElement.style.setProperty('--side', w + 'px');
+  if (save) localStorage.setItem(SIDE.key, w);
+  return w;
+}
+function initSideResize() {
+  const saved = Number(localStorage.getItem(SIDE.key)); if (saved) setSide(saved, false);
+  const d = document.getElementById('sdiv'); if (!d) return;
+  d.addEventListener('pointerdown', e => {
+    e.preventDefault(); d.setPointerCapture(e.pointerId); d.classList.add('active'); document.body.style.userSelect = 'none';
+    const x0 = e.clientX, w0 = document.getElementById('side').getBoundingClientRect().width;   // relative to where it was grabbed
+    const move = ev => { setSide(w0 + ev.clientX - x0, false); };
+    const up = ev => { d.classList.remove('active'); document.body.style.userSelect = ''; d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up);
+      setSide(w0 + ev.clientX - x0, true); P.forEach(p => p.refit()); };
+    d.addEventListener('pointermove', move); d.addEventListener('pointerup', up);
+  });
+  d.addEventListener('dblclick', () => { document.documentElement.style.removeProperty('--side'); localStorage.removeItem(SIDE.key); P.forEach(p => p.refit()); });
+  window.addEventListener('resize', () => { const w = Number(localStorage.getItem(SIDE.key)); if (w) setSide(w, false); });
+}
 function savePanels() { localStorage.setItem('lcars-panels', JSON.stringify(PANEL.saved)); }
 function panelCwd() { return (typeof cwdOf === 'function' && S.focus && cwdOf(S.focus)) || '/root'; }
 function relPath(p) { return PANEL.root && p.startsWith(PANEL.root + '/') ? p.slice(PANEL.root.length + 1) : p; }
@@ -238,6 +260,7 @@ function initPanel() {
   panelEl('c-btn').onclick = commitChanges;
   panelEl('c-msg').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commitChanges(); } else if (e.key === 'Escape') e.target.blur(); e.stopPropagation(); });
   // drag the divider to resize; double-click resets
+  initSideResize();
   const pd = panelEl('pdiv');
   pd.onpointerdown = e => {
     e.preventDefault(); pd.setPointerCapture(e.pointerId); pd.classList.add('active');
