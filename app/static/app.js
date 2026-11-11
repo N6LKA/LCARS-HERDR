@@ -27,6 +27,7 @@ const S = {
   first: true,
 };
 const P = new Map();     // address -> Pane (only panes of the active tab)
+window.P = P; window.S = S;
 
 // ── helpers ───────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -486,23 +487,29 @@ function movePal(d) {
 }
 function openHelp() {
   const body = $('#help-body'); body.textContent = '';
-  const groups = new Map();
+  const ORDER_G = ['App', 'Spaces', 'Tabs', 'Panes', 'Agents', 'Terminal'];
+  const groups = new Map(ORDER_G.map(g => [g, []]));
+  const merged = /(space|tab)\.select_\d$|^pane\.(go|swap)_/;       // shown below as ranges
   for (const c of CMDS.values()) {
+    if (merged.test(c.id)) continue;
     const keys = KEYS.filter(([, id]) => id === c.id).map(([k]) => fmtKey(k));
-    if (!keys.length) continue;
-    if (!groups.has(c.group)) groups.set(c.group, []);
-    groups.get(c.group).push([c.label, keys.slice(0, 3).join('   ')]);
+    if (keys.length) (groups.get(c.group) || groups.set(c.group, []).get(c.group)).push([c.label, keys.slice(0, 3).join('   or   ')]);
   }
+  groups.get('Spaces').push(['Go to space 1–9', 'Alt+1 … 9']);
+  groups.get('Tabs').push(['Go to tab 1–9', 'Ctrl+1 … 9   or   Ctrl+Alt+1 … 9']);
+  groups.get('Panes').push(['Focus pane left / down / up / right', 'Alt+H  J  K  L   or   Alt+← →']);
+  groups.get('Panes').push(['Swap pane left / down / up / right', 'Alt+Shift+H  J  K  L']);
   for (const [g, rows] of groups) {
+    if (!rows.length) continue;
     const h = document.createElement('h4'); h.textContent = g.toUpperCase(); body.appendChild(h);
     for (const [label, keys] of rows) {
-      const a = document.createElement('span'), b = document.createElement('kbd'); a.textContent = label; b.textContent = keys; body.append(a, b);
+      const r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd');
+      r.className = 'hrow'; a.textContent = label; b.textContent = keys; r.append(a, b); body.appendChild(r);
     }
   }
-  const note = document.createElement('h4'); note.textContent = 'NOTES'; body.appendChild(note);
-  const n1 = document.createElement('span'); n1.style.gridColumn = '1/-1'; n1.style.textTransform = 'none';
-  n1.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves; the Ctrl+Alt twins work everywhere, and the originals work in an installed app window. Right-click a pane for its menu; Shift+right-click for the browser menu.';
-  body.appendChild(n1);
+  const note = document.createElement('p'); note.className = 'hnote';
+  note.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves. The Ctrl+Alt versions work everywhere, and the originals work when the page is installed as an app. Right-click a pane for its menu; Shift+right-click for the browser menu.';
+  body.appendChild(note);
   $('#help-dlg').showModal();
 }
 
@@ -562,7 +569,11 @@ class Pane {
     const url = `${proto}://${location.host}/ws/term?terminal=${encodeURIComponent(this.addr)}&cols=${this.term.cols}&rows=${this.term.rows}`;
     const ws = (this.ws = new WebSocket(url));
     ws.binaryType = 'arraybuffer';
-    ws.onopen = () => { this.retry = 0; this.el.classList.remove('down'); };
+    ws.onopen = () => {
+      this.retry = 0; this.el.classList.remove('down');
+      this.refit();   // the first fit can happen before the link is up; tell the program the real size now
+      this.send({ type: 'resize', cols: this.term.cols, rows: this.term.rows });
+    };
     ws.onmessage = ev => {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -742,7 +753,7 @@ function renderPanes() {
     lastSig = sig; box.textContent = '';
     if (root) {
       if (zoom) { const el = P.get(zoom).el; el.style.flex = '1 1 auto'; box.appendChild(el); }
-      else { const el = buildNode(root); box.appendChild(el); }
+      else { const el = buildNode(root); if (isLeaf(root)) el.style.flex = '1 1 0px'; box.appendChild(el); }
     }
   }
   document.body.classList.toggle('no-panes', addrs.length === 0);
