@@ -180,3 +180,10 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-ra
   #foot{padding-left:12px;background:none}
   #f-hint{display:none}
 }
+
+/* dragging a pane by its header */
+.pane-h .cap,.pane-h .title{cursor:grab;touch-action:none}
+body.dragging{user-select:none;cursor:grabbing}
+.dropzone{position:fixed;z-index:80;background:#ff990044;border:3px solid var(--orange);border-radius:8px;pointer-events:none;display:none}
+.dropzone[data-zone=center]{background:#99ccff33;border-color:var(--sky)}
+.dropzone[data-zone=center]::after{content:"SWAP";position:absolute;inset:0;display:grid;place-content:center;color:var(--sky);font-size:26px;font-weight:700;letter-spacing:.3em}
