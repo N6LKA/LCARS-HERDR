@@ -23,7 +23,7 @@ const S = {
   focus: null,           // focused pane address
   docVersion: 0,
   sound: localStorage.getItem('lcars-sound') !== 'off',
-  font: Number(localStorage.getItem('lcars-font')) || 14,
+  font: Number(localStorage.getItem('lcars-font-v2')) || 15,
   prev: new Map(),       // address -> last status, for alerts
   fresh: new Map(),      // address -> time created here, so a new terminal is not pruned before the list has it
   first: true,
@@ -383,7 +383,7 @@ function stepAgent(d) {
   focusAddr(list[(i + d + list.length) % list.length].address);
 }
 function applyFont() {
-  localStorage.setItem('lcars-font', S.font);
+  localStorage.setItem('lcars-font-v2', S.font);
   for (const p of P.values()) { p.term.options.fontSize = S.font; p.refit(); }
 }
 
@@ -402,7 +402,7 @@ def('app.install', 'Install LCARS as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
 def('app.zoom_in', 'Bigger terminal text', () => { S.font = Math.min(28, S.font + 1); applyFont(); }, 'App');
 def('app.zoom_out', 'Smaller terminal text', () => { S.font = Math.max(9, S.font - 1); applyFont(); }, 'App');
-def('app.zoom_reset', 'Reset terminal text size', () => { S.font = 14; applyFont(); }, 'App');
+def('app.zoom_reset', 'Reset terminal text size', () => { S.font = 15; applyFont(); }, 'App');
 def('sound.toggle', 'Turn sound on or off', () => toggleSound(), 'App');
 def('space.new', 'New space', async () => { const n = await ask('NEW SPACE', '', 'name (optional)'); if (n === null) return; const sp = newSpace(n ? n.toUpperCase() : null); S.spaces.push(sp); S.active = sp.id; S.focus = null; commit(); }, 'Spaces');
 def('space.rename', 'Rename space', id => renameSpace(typeof id === 'string' ? id : undefined), 'Spaces');
@@ -716,7 +716,7 @@ class Pane {
       <div class="pane-b"><span class="pane-msg">RECONNECTING</span></div>`;
     this.body = $('.pane-b', this.el);
     this.term = new Terminal({
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: S.font, lineHeight: 1.05,
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: S.font, lineHeight: 1.0,
       cursorBlink: true, scrollback: 5000, theme: XTERM_THEME, allowProposedApi: true, macOptionIsMeta: true,
     });
     this.fit = new FitAddon.FitAddon();
@@ -724,6 +724,9 @@ class Pane {
     this.term.loadAddon(new WebLinksAddon.WebLinksAddon());
     try { this.term.loadAddon(new Unicode11Addon.Unicode11Addon()); this.term.unicode.activeVersion = '11'; } catch {}
     this.term.open(this.body);
+    // GPU drawing: crisper text, and box characters join up (the default row-by-row drawing leaves gaps in lines).
+    // If the browser cannot do it, the ordinary renderer stays in use.
+    try { const gl = new WebglAddon.WebglAddon(); gl.onContextLoss(() => gl.dispose()); this.term.loadAddon(gl); this.gpu = true; } catch { this.gpu = false; }
     // Ctrl+V / Cmd+V must stay a browser paste. If xterm turns it into a Ctrl+V key for the program, the program looks for
     // an image on the SERVER's clipboard ("no image in the clipboard") and the browser never gets to paste your screenshot.
     this.term.attachCustomKeyEventHandler(ev => !(ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === 'v'));
@@ -1076,6 +1079,8 @@ async function loadStatus() {
 (async function main() {
   init();
   loadStatus().then(() => { if (S.spaces.length) render(); });
+  // The terminal font must be loaded before the first terminal measures its cells, or text is laid out on the wrong grid.
+  await Promise.all([document.fonts.load('15px "Hack"'), document.fonts.load('bold 15px "Hack"')]).catch(() => {});
   $('#install-btn').onclick = installApp;
   loadAgents().then(() => { if (S.spaces.length) render(); });   // names in the lists; wait until the layout has loaded
   await loadLayout();
