@@ -332,13 +332,23 @@ async def ws_term(ws: WebSocket, terminal: str, cols: int = 120, rows: int = 32,
         await ws.send_text(json.dumps({"type": "attached", "terminal": res["terminal"], "observe": bool(observe)}))
 
         async def to_browser():
-            while True:
-                kind, payload = await stream.recv()
-                if kind == DATA:
-                    await ws.send_bytes(payload)
-                elif kind == CLOSE:
-                    await ws.send_text(json.dumps({"type": "closed", "reason": stream.close_reason}))
-                    return
+            # A quiet terminal still sends a keepalive, so a proxy's idle timeout never cuts the link.
+            nxt = asyncio.ensure_future(stream.recv())
+            try:
+                while True:
+                    done, _ = await asyncio.wait({nxt}, timeout=20)
+                    if not done:
+                        await ws.send_text('{"type":"ping"}')
+                        continue
+                    kind, payload = nxt.result()
+                    nxt = asyncio.ensure_future(stream.recv())
+                    if kind == DATA:
+                        await ws.send_bytes(payload)
+                    elif kind == CLOSE:
+                        await ws.send_text(json.dumps({"type": "closed", "reason": stream.close_reason}))
+                        return
+            finally:
+                nxt.cancel()
 
         async def to_core():
             while True:

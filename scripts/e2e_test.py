@@ -3,7 +3,7 @@ import asyncio, json, sys
 from pathlib import Path
 import httpx, websockets
 
-BASE = "http://127.0.0.1:7843"
+BASE = "http://127.0.0.1:7842"
 env = dict(l.split("=", 1) for l in Path("/opt/lcars-herdr/.env").read_text().splitlines() if "=" in l)
 TOKEN = env["LCARS_TOKEN"]
 
@@ -19,7 +19,7 @@ async def main():
         print("listed:", "lcars-e2e" in names)
 
         # live stream: attach, type a command, read the echo
-        async with websockets.connect(f"ws://127.0.0.1:7843/ws/term?terminal={tid}&cols=100&rows=30",
+        async with websockets.connect(f"ws://127.0.0.1:7842/ws/term?terminal={tid}&cols=100&rows=30",
                                       additional_headers={"Cookie": f"lcars_session={cookie}"}) as ws:
             print("attached:", json.loads(await ws.recv()))
             out = b""
@@ -47,7 +47,7 @@ async def main():
         await c.put("/api/doc/lcars-e2e", json={"value": None, "version": (await c.get("/api/doc/lcars-e2e")).json()["version"]})
 
         # events feed sees the kill
-        async with websockets.connect("ws://127.0.0.1:7843/ws/events",
+        async with websockets.connect("ws://127.0.0.1:7842/ws/events",
                                       additional_headers={"Cookie": f"lcars_session={cookie}"}) as ev:
             snap = json.loads(await ev.recv()); print("events snapshot terminals:", len(snap["terminals"]))
             k = await c.delete("/api/terminals", params={"terminal": tid}); print("kill:", k.status_code)
@@ -64,7 +64,7 @@ async def main():
 
         # cross-site WebSocket is refused
         try:
-            async with websockets.connect(f"ws://127.0.0.1:7843/ws/events",
+            async with websockets.connect(f"ws://127.0.0.1:7842/ws/events",
                     additional_headers={"Cookie": f"lcars_session={cookie}", "Origin": "https://evil.example"}) as bad:
                 await bad.recv(); print("cross-origin ws: ALLOWED (bad)")
         except Exception as e: print("cross-origin ws refused:", type(e).__name__)
