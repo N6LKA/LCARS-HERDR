@@ -10,7 +10,7 @@
   --orange:#ff9966;--peach:#ff9966;--tan:#ffcc99;--lilac:#cc99cc;--violet:#9999ff;--sky:#99ccff;--gold:#ffcc66;--red:#ff5544;--gray:#666688;
   --tabdim:#9977aa;--hdr:#34343f;--hdrtext:#b8b8c8;
   --s-working:var(--gold);--s-blocked:var(--red);--s-done:var(--sky);--s-idle:var(--violet);--s-live:var(--gray);--s-ended:#444;
-  --side:250px;--topH:36px;--bend:14px;
+  --side:272px;--topH:36px;--bend:20px;
   --ui:"Antonio","Arial Narrow",Arial,sans-serif;
   --mono:"Hack","Hack Nerd Font Mono","DejaVu Sans Mono",Menlo,Consolas,monospace;
 }
@@ -73,6 +73,7 @@ body.side-hidden #side-show{display:grid}
 .r-peach{--c:var(--orange)}.r-lilac{--c:var(--lilac)}.r-gold{--c:var(--gold)}
 .sect .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;overflow:hidden;padding-top:1px}
 #blk-spaces .body{padding-top:8px}
+#blk-spaces .body,#blk-agents .body,#blk-foot .body{padding-left:22px}
 .sect .body.foot{gap:4px;overflow:visible}
 .rail-head{display:flex;align-items:center;justify-content:space-between}
 .rail-title{color:var(--orange);font-weight:700;font-size:16px;padding:2px 4px;flex:none}
