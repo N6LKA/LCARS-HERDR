@@ -150,12 +150,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-ra
 .pal-item{display:flex;justify-content:space-between;gap:12px;padding:6px 12px;border-radius:12px;color:var(--tan);cursor:pointer;font-size:15px}
 .pal-item.sel,.pal-item:hover{background:var(--orange);color:#000}
 .pal-item kbd{font:inherit;font-size:12px;opacity:.75;text-transform:none;letter-spacing:.02em}
-#help-dlg{width:min(720px,94vw);min-width:0;max-height:86vh;overflow-y:auto;padding:16px 20px}
+#help-dlg{width:min(600px,94vw);min-width:0;max-height:86vh;overflow-y:auto;padding:16px 20px}
 #help-body{margin-bottom:10px}
 #help-body h4{margin:12px 0 3px;color:var(--lilac);letter-spacing:.2em;font-size:13px}
 .hrow{display:flex;gap:18px;align-items:baseline;padding:3px 10px;border-radius:10px;font-size:15px}
 .hrow:hover{background:#1f1530}
-.hrow span{flex:0 0 330px;color:var(--tan)}
+.hrow.alt{background:#150f1c}
+.hrow span{flex:0 0 252px;color:var(--tan)}
 .hrow kbd{font:inherit;font-size:14px;color:var(--gold);text-transform:none;letter-spacing:.02em}
 .hnote{margin:12px 0 0;color:#9a8aa8;font-size:13px;text-transform:none;letter-spacing:.02em;line-height:1.35}
 @media (max-width:700px){.hrow{flex-direction:column;gap:0}.hrow span{flex:none}}

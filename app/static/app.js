@@ -502,15 +502,16 @@ function openHelp() {
   for (const [g, rows] of groups) {
     if (!rows.length) continue;
     const h = document.createElement('h4'); h.textContent = g.toUpperCase(); body.appendChild(h);
+    let n = 0;
     for (const [label, keys] of rows) {
       const r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd');
-      r.className = 'hrow'; a.textContent = label; b.textContent = keys; r.append(a, b); body.appendChild(r);
+      r.className = 'hrow' + (n++ % 2 ? ' alt' : ''); a.textContent = label; b.textContent = keys; r.append(a, b); body.appendChild(r);
     }
   }
   const note = document.createElement('p'); note.className = 'hnote';
   note.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves. The Ctrl+Alt versions work everywhere, and the originals work when the page is installed as an app. Right-click a pane for its menu; Shift+right-click for the browser menu.';
   body.appendChild(note);
-  $('#help-dlg').showModal();
+  const d = $('#help-dlg'); d.showModal(); d.scrollTop = 0;   // opening focuses Close at the bottom; start at the top
 }
 
 // ── panes: one xterm.js attached to one core terminal ─────────────────
