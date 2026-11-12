@@ -120,9 +120,26 @@
 <dialog id="sec-dlg" aria-labelledby="sec-title">
   <div id="sec-form">
     <h3 id="sec-title">SETTINGS</h3>
+    <section><h4>ACCOUNT</h4>
+      <p class="dim" id="sec-who"></p>
+      <form id="sec-nameform" autocomplete="off" action="#">
+        <label>NEW USERNAME<input id="sec-newname" name="new-username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32"></label>
+        <label>CURRENT PASSWORD<input id="sec-name-pw" name="current-password" type="password" autocomplete="current-password"></label>
+        <div class="row"><button class="pill orange" id="sec-name-go">CHANGE USERNAME</button></div>
+      </form>
+      <p class="dim" id="sec-name-msg"></p></section>
+    <section id="sec-users-sec" hidden><h4>USERS</h4>
+      <p class="ip">Every user gets the same access to this server's terminals, which is a full shell. Add only people you trust.</p>
+      <div id="sec-users"></div>
+      <form id="sec-adduser" autocomplete="off" action="#">
+        <label>NEW USER'S USERNAME<input id="sec-u-name" name="new-user" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32"></label>
+        <label>THEIR FIRST PASSWORD (12+ CHARACTERS)<input id="sec-u-pw" name="new-user-password" type="password" autocomplete="new-password"></label>
+        <div class="row"><button class="pill orange" id="sec-u-go">ADD USER</button></div>
+      </form>
+      <p class="dim" id="sec-u-msg"></p></section>
     <section><h4>PASSWORD</h4>
       <form id="sec-pwform" autocomplete="on" action="#">
-        <input class="vh" type="text" name="username" autocomplete="username" value="lcars" readonly tabindex="-1" aria-hidden="true">
+        <input class="vh" id="sec-hid-user" type="text" name="username" autocomplete="username" value="" readonly tabindex="-1" aria-hidden="true">
         <label>CURRENT<input id="sec-cur" name="current-password" type="password" autocomplete="current-password"></label>
         <label>NEW (12+ CHARACTERS)<input id="sec-new" name="new-password" type="password" autocomplete="new-password"></label>
         <label>NEW AGAIN<input id="sec-new2" name="new-password-confirm" type="password" autocomplete="new-password"></label>

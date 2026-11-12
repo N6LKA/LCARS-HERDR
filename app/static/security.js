@@ -14,6 +14,15 @@
   async function refresh() {
     const s = await api('/api/auth/status');
     on = s.totp;
+    $('#sec-who').textContent = s.user ? `Signed in as ${s.user} (${s.role}).` : 'This session came from a program on this machine, not an account.';
+    $('#sec-hid-user').value = s.user || '';
+    $('#sec-users-sec').hidden = s.role !== 'admin';
+    if (s.users) $('#sec-users').replaceChildren(...s.users.map(x => {
+      const d = document.createElement('div'); d.className = 'urow';
+      const t = document.createElement('span'); t.textContent = `${x.username} · ${x.role} · 2FA ${x.totp ? 'on' : 'off'}${x.signed_in ? ' · signed in' : ''}`; d.append(t);
+      if (x.username !== s.user) { const b = document.createElement('button'); b.type = 'button'; b.className = 'pill red'; b.textContent = 'REMOVE'; b.onclick = () => removeUser(x.username); d.append(b); }
+      return d;
+    }));
     $('#sec-2fa-state').textContent = on ? `ON. ${s.recovery_left} recovery code(s) left.` : 'OFF. Logging in needs only the password.';
     $('#sec-2fa-go').textContent = on ? 'TURN OFF 2FA' : setting ? 'CONFIRM CODE' : 'SET UP 2FA';
     $('#sec-2fa-setup').hidden = on || !setting; $('#sec-code-l').hidden = on ? true : !setting;
@@ -25,10 +34,24 @@
   }
 
   function open() {
-    for (const i of ['#sec-cur', '#sec-new', '#sec-new2', '#sec-code']) $(i).value = '';
-    for (const m of ['#sec-pw-msg', '#sec-2fa-msg']) say(m, '');
+    for (const i of ['#sec-cur', '#sec-new', '#sec-new2', '#sec-code', '#sec-newname', '#sec-name-pw', '#sec-u-name', '#sec-u-pw']) $(i).value = '';
+    for (const m of ['#sec-pw-msg', '#sec-2fa-msg', '#sec-name-msg', '#sec-u-msg']) say(m, '');
     setting = false; $('#sec-recovery').hidden = true;
     $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-cur').focus(); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
+  }
+
+  async function changeName() {
+    try { const r = await api('/api/auth/username', { new: $('#sec-newname').value, current: $('#sec-name-pw').value }); $('#sec-newname').value = ''; $('#sec-name-pw').value = ''; say('#sec-name-msg', `Your username is now ${r.username}.`); refresh(); }
+    catch (e) { say('#sec-name-msg', e.message, true); }
+  }
+  async function addUser() {
+    try { const r = await api('/api/auth/users', { username: $('#sec-u-name').value, password: $('#sec-u-pw').value }); $('#sec-u-name').value = ''; $('#sec-u-pw').value = ''; say('#sec-u-msg', `Added ${r.username}. They can sign in now, and should set up 2FA in SETTINGS.`); refresh(); }
+    catch (e) { say('#sec-u-msg', e.message, true); }
+  }
+  async function removeUser(name) {
+    if (!confirm(`Remove ${name}? They are signed out immediately.`)) return;
+    try { await fetch('/api/auth/users?username=' + encodeURIComponent(name), { method: 'DELETE' }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `error ${r.status}`); }); say('#sec-u-msg', `Removed ${name}.`); refresh(); }
+    catch (e) { say('#sec-u-msg', e.message, true); }
   }
 
   async function changePw() {
@@ -58,6 +81,8 @@
     const shut = () => { $('#sec-dlg').close(); $('#sec-back').hidden = true; $('#sec-rc').textContent = ''; };
     $('#sec-close').onclick = shut; $('#sec-back').onclick = shut;
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#sec-dlg').open) shut(); });
+    $('#sec-nameform').addEventListener('submit', ev => { ev.preventDefault(); changeName(); });
+    $('#sec-adduser').addEventListener('submit', ev => { ev.preventDefault(); addUser(); });
     $('#sec-pwform').addEventListener('submit', ev => { ev.preventDefault(); changePw(); });
     $('#sec-2faform').addEventListener('submit', ev => { ev.preventDefault(); twoFa(); });
     $('#sec-copy').onclick = async () => {

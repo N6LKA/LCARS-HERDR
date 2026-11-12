@@ -232,6 +232,9 @@ dialog label.chk input{width:auto}
 #sec-dlg .row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 #sec-open{display:inline-block;text-decoration:none;color:#000;margin:4px 0 10px}
 #sec-rc{font-family:var(--mono);color:var(--gold);background:#150f1c;border-radius:10px;padding:8px 12px;text-transform:none;letter-spacing:0;user-select:all;margin:4px 0}
+#sec-users{display:grid;gap:4px;margin-bottom:8px}
+.urow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#150f1c;border-radius:10px;padding:4px 6px 4px 12px;text-transform:none;letter-spacing:.02em;color:var(--tan)}
+.urow .pill{min-height:24px;font-size:12px;padding:0 12px;border-radius:12px}
 #sec-sessions{display:grid;gap:3px;margin-bottom:6px}
 #sec-dlg .dim{text-transform:none;letter-spacing:.02em}
 #mach-msg{margin:4px 0 8px;min-height:1.2em}#mach-msg.err{color:#ff7766;font-size:14px}

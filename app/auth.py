@@ -1,21 +1,27 @@
-"""Login for LCARS: access code + authenticator app (TOTP), with server-side sessions.
+"""Login for LCARS: username + password + authenticator app (TOTP), with server-side sessions.
 
- - The access code (LCARS_TOKEN) is the first factor. When 2FA is on, a 6-digit authenticator code (or a one-time recovery
-   code) is the second, and both are always required together so the page never reveals which part was wrong.
+ - Accounts: each user has a username, a password (scrypt hash) and their own 2FA. The first account is an admin; an admin can
+   add and remove other users. Every user gets the same access to this machine's terminals, so add only people you trust.
+ - There is no built-in password. The first visit to the login page creates the first account: from a direct local-network
+   connection that needs nothing else; from anywhere else (or through any proxy) it needs a one-time setup code
+   (`python3 -m app.auth setup-code`, also logged at startup).
+ - When a user has 2FA on, a 6-digit authenticator code (or a one-time recovery code) is required with the password. Username,
+   password and code are always checked together, so the page never reveals which part was wrong or whether a user exists.
  - A session is a random value kept on the server (only its hash is stored), so it can expire, be listed and be revoked.
  - Failed logins are counted by the real client address (the last X-Forwarded-For entry when the request came through a
    trusted proxy), per address and across all addresses.
- - Direct connections from this machine itself (no proxy header) skip the second factor: whoever is on the box already owns it.
-   That keeps local tools and tests working.
-State lives in auth.json next to the app (mode 600). `python3 -m app.auth status | setup-code | reset-2fa [--password]`
-There is no built-in password: the first visit to the login page chooses it (see /api/login/setup in main.py). From the local network it needs nothing
-else; from anywhere else it needs a one-time setup code (`setup-code`, also logged at startup).. manage it on the server.
+ - Direct connections from this machine itself (no proxy header) may use the optional LCARS_TOKEN from .env instead of an
+   account. It is only for programs on this machine (tools, tests), never accepted from the network.
+State lives in auth.json next to the app (mode 600). Manage it on the server with
+`python3 -m app.auth status | setup-code | reset-2fa USER | set-password USER | remove-all-users`.
 """
 import base64
+import getpass
 import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import struct
 import sys
@@ -30,9 +36,17 @@ SESSION_IDLE = 7 * 86400      # unused for this long = gone
 PER_IP = (5, 300)             # failures, seconds
 GLOBAL = (40, 3600)
 ISSUER = "LCARS"
+MIN_PASSWORD = 12
+USER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+LEGACY_USER = "lcars"          # the account an older single-password install becomes
 _lock = threading.RLock()
 _fail_ip: dict[str, list[float]] = {}
 _fail_all: list[float] = []
+_DUMMY_SALT = b"lcars-no-such-user"
+
+
+def _empty_totp() -> dict:
+    return {"secret": None, "enabled": False, "last": 0}
 
 
 # ── state file ───────────────────────────────────────────────────────────
@@ -41,11 +55,18 @@ def _load() -> dict:
         d = json.loads(STATE_FILE.read_text())
     except (OSError, ValueError):
         d = {}
-    d.setdefault("totp", {"secret": None, "enabled": False, "last": 0})
-    d.setdefault("recovery", [])
+    d.setdefault("users", {})
     d.setdefault("sessions", {})
     d.setdefault("setup", None)
-    d.setdefault("password", None)     # {"salt","hash"}; None until the first visit sets it
+    if d.get("password") and not d["users"]:             # an older install: one password, one 2FA
+        d["users"][LEGACY_USER] = {**d["password"], "totp": d.get("totp") or _empty_totp(), "recovery": d.get("recovery") or [],
+                                   "role": "admin", "created": time.time()}
+        for s in d["sessions"].values():
+            s.setdefault("user", LEGACY_USER)
+    for k in ("password", "totp", "recovery"):
+        d.pop(k, None)
+    for s in d["sessions"].values():
+        s.setdefault("user", LEGACY_USER)
     return d
 
 
@@ -59,6 +80,27 @@ def _save(d: dict) -> None:
 
 def _h(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
+
+
+def _scrypt(pw: str, salt: bytes) -> str:
+    return hashlib.scrypt(pw.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32).hex()
+
+
+def _hash_pw(pw: str) -> dict:
+    salt = secrets.token_bytes(16)
+    return {"salt": salt.hex(), "hash": _scrypt(pw, salt)}
+
+
+def clean_username(name: str) -> str:
+    name = (name or "").strip().lower()
+    if not USER_RE.match(name):
+        raise ValueError("username: 2-32 letters, digits, . _ - (no spaces)")
+    return name
+
+
+def _check_new_password(pw: str) -> None:
+    if len(pw or "") < MIN_PASSWORD:
+        raise ValueError(f"the password needs at least {MIN_PASSWORD} characters")
 
 
 # ── TOTP (RFC 6238, SHA-1, 6 digits, 30 s) ──────────────────────────────
@@ -83,8 +125,13 @@ def _totp_match(secret: str, code: str, after: int = 0) -> int | None:
     return hit
 
 
-def otpauth_uri(secret: str) -> str:
-    return f"otpauth://totp/{ISSUER}:lcars?secret={secret}&issuer={ISSUER}&algorithm=SHA1&digits=6&period=30"
+def otpauth_uri(secret: str, user: str = "lcars") -> str:
+    return f"otpauth://totp/{ISSUER}:{user}?secret={secret}&issuer={ISSUER}&algorithm=SHA1&digits=6&period=30"
+
+
+def _totp_on(u: dict) -> bool:
+    t = u.get("totp") or {}
+    return bool(t.get("enabled") and t.get("secret"))
 
 
 # ── who is asking ────────────────────────────────────────────────────────
@@ -101,37 +148,6 @@ def is_local(headers, client_host: str | None) -> bool:
     return client_host in ("127.0.0.1", "::1") and not headers.get("x-forwarded-for")
 
 
-def blocked(ip: str) -> bool:
-    now = time.time()
-    with _lock:
-        _fail_ip[ip] = [t for t in _fail_ip.get(ip, []) if now - t < PER_IP[1]]
-        _fail_all[:] = [t for t in _fail_all if now - t < GLOBAL[1]]
-        return len(_fail_ip[ip]) >= PER_IP[0] or len(_fail_all) >= GLOBAL[0]
-
-
-def _fail(ip: str) -> None:
-    with _lock:
-        _fail_ip.setdefault(ip, []).append(time.time())
-        _fail_all.append(time.time())
-
-
-# ── the password (access code) ───────────────────────────────────────────
-MIN_PASSWORD = 12
-
-
-def _scrypt(pw: str, salt: bytes) -> str:
-    return hashlib.scrypt(pw.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32).hex()
-
-
-def _pw_ok(d: dict, pw: str, env: str, local: bool) -> bool:
-    """The password set in the app. The optional .env code is only a key for programs on this machine itself, never remote."""
-    rec = d["password"]
-    a = bool(rec) and hmac.compare_digest(_scrypt(pw, bytes.fromhex(rec["salt"])), rec["hash"]) if rec else False
-    b = bool(env) and hmac.compare_digest(pw.encode(), env.encode())
-    return a or (b and local)
-
-
-SETUP_CODE_TTL = 3600
 _FORWARD = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded", "via", "cf-connecting-ip")
 
 
@@ -147,8 +163,37 @@ def direct_lan(headers, client_host: str | None) -> bool:
         return False
 
 
+def blocked(ip: str) -> bool:
+    now = time.time()
+    with _lock:
+        _fail_ip[ip] = [t for t in _fail_ip.get(ip, []) if now - t < PER_IP[1]]
+        _fail_all[:] = [t for t in _fail_all if now - t < GLOBAL[1]]
+        return len(_fail_ip[ip]) >= PER_IP[0] or len(_fail_all) >= GLOBAL[0]
+
+
+def _fail(ip: str) -> None:
+    with _lock:
+        _fail_ip.setdefault(ip, []).append(time.time())
+        _fail_all.append(time.time())
+
+
+# ── first run ────────────────────────────────────────────────────────────
+SETUP_CODE_TTL = 3600
+
+
+def users_exist() -> bool:
+    with _lock:
+        return bool(_load()["users"])
+
+
+def two_factor_any() -> bool:
+    """Whether the login page should offer the code step (any account uses 2FA)."""
+    with _lock:
+        return any(_totp_on(u) for u in _load()["users"].values())
+
+
 def make_setup_code() -> str:
-    """A one-time code for the first password, valid for an hour. Shown only to someone with access to the server."""
+    """A one-time code for creating the first account, valid for an hour. Shown only to someone with access to the server."""
     with _lock:
         d = _load()
         code = secrets.token_hex(6)
@@ -157,128 +202,122 @@ def make_setup_code() -> str:
         return f"{code[:4]}-{code[4:8]}-{code[8:]}"
 
 
-def setup_password(new: str, code: str = "", direct: bool = False) -> None:
-    """First use: choose the password. Works once; after that only a signed-in change_password can replace it.
-    Without a direct local-network connection the one-time setup code is required."""
+def setup_first_user(username: str, password: str, code: str = "", direct: bool = False) -> str:
+    """First use: create the first (admin) account. Works once. Without a direct local-network connection the one-time
+    setup code is required."""
     with _lock:
         d = _load()
-        if d["password"]:
-            raise ValueError("a password is already set")
+        if d["users"]:
+            raise ValueError("an account already exists")
         if not direct:
             s = d.get("setup") or {}
             given = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
             if not s or time.time() > s.get("expires", 0) or not hmac.compare_digest(_h(given), s.get("hash", "")):
                 raise ValueError("the setup code is missing, wrong or expired")
-        if len(new) < MIN_PASSWORD:
-            raise ValueError(f"the password needs at least {MIN_PASSWORD} characters")
+        name = clean_username(username)
+        _check_new_password(password)
         d["setup"] = None
-        salt = secrets.token_bytes(16)
-        d["password"] = {"salt": salt.hex(), "hash": _scrypt(new, salt)}
+        d["users"][name] = {**_hash_pw(password), "totp": _empty_totp(), "recovery": [], "role": "admin", "created": time.time()}
         _save(d)
+        return name
 
 
-def new_session(ip: str, ua: str) -> str:
+# ── login and sessions ───────────────────────────────────────────────────
+def _new_session(d: dict, user: str, ip: str, ua: str) -> str:
+    sid = secrets.token_urlsafe(32)
+    now = time.time()
+    d["sessions"][_h(sid)] = {"user": user, "created": now, "last": now, "ip": ip, "ua": ua[:120]}
+    _prune(d)
+    return sid
+
+
+def new_session(user: str, ip: str, ua: str) -> str:
     with _lock:
         d = _load()
-        sid = secrets.token_urlsafe(32)
-        now = time.time()
-        d["sessions"][_h(sid)] = {"created": now, "last": now, "ip": ip, "ua": ua[:120]}
-        _prune(d)
+        sid = _new_session(d, user, ip, ua)
         _save(d)
         return sid
 
 
-def change_password(current: str, new: str, env: str, local: bool, keep_sid: str) -> None:
-    with _lock:
-        d = _load()
-        if not _pw_ok(d, current, env, local):
-            raise ValueError("the current password is not right")
-        if len(new) < MIN_PASSWORD:
-            raise ValueError(f"the new password needs at least {MIN_PASSWORD} characters")
-        salt = secrets.token_bytes(16)
-        d["password"] = {"salt": salt.hex(), "hash": _scrypt(new, salt)}
-        keep = _h(keep_sid or "")
-        d["sessions"] = {k: v for k, v in d["sessions"].items() if k == keep}   # every other device signs in again
-        _save(d)
-
-
-def password_is_custom() -> bool:
-    with _lock:
-        return bool(_load()["password"])
-
-
-# ── login and sessions ───────────────────────────────────────────────────
-def two_factor_on() -> bool:
-    with _lock:
-        t = _load()["totp"]
-        return bool(t["enabled"] and t["secret"])
-
-
-def login(token: str, code: str, expected: str, ip: str, ua: str, local: bool) -> str | None:
+def login(username: str, password: str, code: str, env: str, ip: str, ua: str, local: bool) -> str | None:
     """A new session id, or None. Every check runs even when an earlier one failed."""
     with _lock:
         d = _load()
-        ok = _pw_ok(d, token, expected, local)
-        t = d["totp"]
-        if t["enabled"] and t["secret"] and not local:
-            code = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
-            second, new_last, used = False, None, None
-            if len(code) == 6 and code.isdigit():
-                c = _totp_match(t["secret"], code, t["last"])
-                if c:
-                    second, new_last = True, c
-            elif code:
-                hh = _h(code)
-                if hh in d["recovery"]:
+        # a program on this machine may present the .env code instead of an account
+        if local and env and hmac.compare_digest(password.encode(), env.encode()):
+            admin = next((n for n, u in d["users"].items() if u.get("role") == "admin"), "local")
+            sid = _new_session(d, admin, ip, ua)
+            _save(d)
+            return sid
+        name = (username or "").strip().lower()
+        u = d["users"].get(name)
+        salt = bytes.fromhex(u["salt"]) if u else _DUMMY_SALT          # hash even for an unknown user: same time either way
+        good = hmac.compare_digest(_scrypt(password, salt), u["hash"] if u else "0" * 64) and bool(u)
+        ok = good
+        new_last = used = None
+        if u and _totp_on(u):
+            t = u["totp"]
+            c = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
+            second = False
+            if len(c) == 6 and c.isdigit():
+                m = _totp_match(t["secret"], c, t["last"])
+                if m:
+                    second, new_last = True, m
+            elif c:
+                hh = _h(c)
+                if hh in u["recovery"]:
                     second, used = True, hh
             ok = ok and second
-            if ok:                                       # a code is used up only by a login that fully succeeds
-                if new_last:
-                    t["last"] = new_last
-                if used:
-                    d["recovery"].remove(used)
         if not ok:
             _fail(ip)
             return None
-        sid = secrets.token_urlsafe(32)
-        now = time.time()
-        d["sessions"][_h(sid)] = {"created": now, "last": now, "ip": ip, "ua": ua[:120]}
-        _prune(d)
+        if new_last:                                     # a code is used up only by a login that fully succeeds
+            u["totp"]["last"] = new_last
+        if used:
+            u["recovery"].remove(used)
+        sid = _new_session(d, name, ip, ua)
         _save(d)
         return sid
 
 
 def _prune(d: dict) -> None:
     now = time.time()
-    for k in [k for k, s in d["sessions"].items() if now - s["created"] > SESSION_MAX or now - s["last"] > SESSION_IDLE]:
+    for k in [k for k, s in d["sessions"].items() if now - s["created"] > SESSION_MAX or now - s["last"] > SESSION_IDLE
+              or s.get("user") not in d["users"] and d["users"]]:
         del d["sessions"][k]
 
 
-def session_ok(sid: str) -> bool:
+def session_user(sid: str) -> str | None:
+    """The username behind a valid session (and note that it is in use), or None."""
     if not sid:
-        return False
+        return None
     with _lock:
         d = _load()
         s = d["sessions"].get(_h(sid))
         if not s:
-            return False
+            return None
         now = time.time()
-        if now - s["created"] > SESSION_MAX or now - s["last"] > SESSION_IDLE:
+        if now - s["created"] > SESSION_MAX or now - s["last"] > SESSION_IDLE or (d["users"] and s["user"] not in d["users"]):
             del d["sessions"][_h(sid)]
             _save(d)
-            return False
+            return None
         if now - s["last"] > 600:                    # note use at most every 10 minutes
             s["last"] = now
             _save(d)
-        return True
+        return s["user"]
+
+
+def session_ok(sid: str) -> bool:
+    return session_user(sid) is not None
 
 
 def logout(sid: str, others: bool = False) -> None:
     with _lock:
         d = _load()
         mine = _h(sid or "")
-        for k in list(d["sessions"]):
-            if (k != mine) if others else (k == mine):
+        me = (d["sessions"].get(mine) or {}).get("user")
+        for k, s in list(d["sessions"].items()):
+            if (k != mine and s.get("user") == me) if others else (k == mine):
                 del d["sessions"][k]
         _save(d)
 
@@ -287,32 +326,112 @@ def status(sid: str) -> dict:
     with _lock:
         d = _load()
         mine = _h(sid or "")
-        return {
-            "totp": bool(d["totp"]["enabled"] and d["totp"]["secret"]),
-            "password_custom": bool(d["password"]),
-            "recovery_left": len(d["recovery"]),
+        me = (d["sessions"].get(mine) or {}).get("user")
+        u = d["users"].get(me) or {}
+        out = {
+            "user": me, "role": u.get("role"),
+            "totp": _totp_on(u), "recovery_left": len(u.get("recovery") or []),
             "sessions": sorted(({"id": k[:8], "created": s["created"], "last": s["last"], "ip": s["ip"], "ua": s["ua"],
-                                 "current": k == mine} for k, s in d["sessions"].items()), key=lambda x: -x["last"]),
+                                 "current": k == mine} for k, s in d["sessions"].items() if s.get("user") == me), key=lambda x: -x["last"]),
         }
+        if u.get("role") == "admin":
+            out["users"] = [{"username": n, "role": x.get("role"), "totp": _totp_on(x), "created": x.get("created"),
+                             "signed_in": sum(1 for s in d["sessions"].values() if s.get("user") == n)}
+                            for n, x in sorted(d["users"].items())]
+        return out
 
 
-# ── turning 2FA on and off ───────────────────────────────────────────────
-def totp_begin() -> dict:
+# ── account changes (always for the signed-in user) ──────────────────────
+def _account(d: dict, user: str) -> dict:
+    u = d["users"].get(user)
+    if not u:
+        raise ValueError("this session has no account (it came from a program on this machine)")
+    return u
+
+
+def _pw_right(u: dict, pw: str) -> bool:
+    return hmac.compare_digest(_scrypt(pw or "", bytes.fromhex(u["salt"])), u["hash"])
+
+
+def change_password(user: str, current: str, new: str, keep_sid: str) -> None:
+    with _lock:
+        d = _load()
+        u = _account(d, user)
+        if not _pw_right(u, current):
+            raise ValueError("the current password is not right")
+        _check_new_password(new)
+        u.update(_hash_pw(new))
+        keep = _h(keep_sid or "")
+        d["sessions"] = {k: v for k, v in d["sessions"].items() if k == keep or v.get("user") != user}   # your other devices sign in again
+        _save(d)
+
+
+def change_username(user: str, new_name: str, current: str, keep_sid: str) -> str:
+    with _lock:
+        d = _load()
+        u = _account(d, user)
+        if not _pw_right(u, current):
+            raise ValueError("the current password is not right")
+        new = clean_username(new_name)
+        if new != user and new in d["users"]:
+            raise ValueError("that username is taken")
+        if new != user:
+            d["users"][new] = d["users"].pop(user)
+            for s in d["sessions"].values():
+                if s.get("user") == user:
+                    s["user"] = new
+        _save(d)
+        return new
+
+
+def add_user(actor: str, name: str, password: str) -> str:
+    with _lock:
+        d = _load()
+        if _account(d, actor).get("role") != "admin":
+            raise ValueError("only an admin can add users")
+        n = clean_username(name)
+        if n in d["users"]:
+            raise ValueError("that username is taken")
+        _check_new_password(password)
+        d["users"][n] = {**_hash_pw(password), "totp": _empty_totp(), "recovery": [], "role": "user", "created": time.time()}
+        _save(d)
+        return n
+
+
+def remove_user(actor: str, name: str) -> None:
+    with _lock:
+        d = _load()
+        if _account(d, actor).get("role") != "admin":
+            raise ValueError("only an admin can remove users")
+        n = (name or "").strip().lower()
+        if n not in d["users"]:
+            raise ValueError("no such user")
+        if n == actor:
+            raise ValueError("you cannot remove your own account here")
+        del d["users"][n]
+        d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("user") != n}
+        _save(d)
+
+
+# ── turning 2FA on and off (own account) ─────────────────────────────────
+def totp_begin(user: str) -> dict:
     """A fresh secret, kept but not active until a code from it is confirmed."""
     with _lock:
         d = _load()
-        if d["totp"]["enabled"]:
+        u = _account(d, user)
+        if _totp_on(u):
             raise ValueError("2FA is already on")
-        d["totp"] = {"secret": new_secret(), "enabled": False, "last": 0}
+        u["totp"] = {"secret": new_secret(), "enabled": False, "last": 0}
         _save(d)
-        return {"secret": d["totp"]["secret"], "uri": otpauth_uri(d["totp"]["secret"])}
+        return {"secret": u["totp"]["secret"], "uri": otpauth_uri(u["totp"]["secret"], user)}
 
 
-def totp_confirm(code: str) -> list[str]:
+def totp_confirm(user: str, code: str) -> list[str]:
     """Check a code from the new secret, switch 2FA on, and return 8 recovery codes (shown once, stored hashed)."""
     with _lock:
         d = _load()
-        t = d["totp"]
+        u = _account(d, user)
+        t = u["totp"]
         if t["enabled"] or not t["secret"]:
             raise ValueError("start the setup first")
         c = _totp_match(t["secret"], "".join(ch for ch in code if ch.isdigit()))
@@ -320,40 +439,62 @@ def totp_confirm(code: str) -> list[str]:
             raise ValueError("that code is not right")
         t["enabled"], t["last"] = True, c
         codes = [secrets.token_hex(5) for _ in range(8)]
-        d["recovery"] = [_h(x) for x in codes]
+        u["recovery"] = [_h(x) for x in codes]
         _save(d)
         return [f"{x[:5]}-{x[5:]}" for x in codes]
 
 
-def totp_disable(code: str) -> None:
+def totp_disable(user: str, code: str) -> None:
     with _lock:
         d = _load()
-        t = d["totp"]
-        if not t["enabled"]:
+        u = _account(d, user)
+        if not _totp_on(u):
             return
         code = "".join(ch for ch in code if ch.isalnum()).lower()
-        c = _totp_match(t["secret"], code, t["last"]) if code.isdigit() and len(code) == 6 else None
+        c = _totp_match(u["totp"]["secret"], code, u["totp"]["last"]) if code.isdigit() and len(code) == 6 else None
         if not c:
             raise ValueError("that code is not right")
-        d["totp"], d["recovery"] = {"secret": None, "enabled": False, "last": 0}, []
+        u["totp"], u["recovery"] = _empty_totp(), []
         _save(d)
 
 
-if __name__ == "__main__":
+# ── command line, for the server's own shell ─────────────────────────────
+def _cli() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
-    if cmd == "reset-2fa":                             # lost phone: switch 2FA off from the server's own shell
-        with _lock:
-            d = _load()
-            d["totp"], d["recovery"], d["sessions"] = {"secret": None, "enabled": False, "last": 0}, [], {}
-            if "--password" in sys.argv:             # also forget the password: the next visit sets a new one
-                d["password"] = None
+    arg = sys.argv[2].strip().lower() if len(sys.argv) > 2 else ""
+    with _lock:
+        d = _load()
+        if cmd == "reset-2fa":                         # lost phone: switch one user's 2FA off
+            if arg not in d["users"]:
+                sys.exit(f"no such user. Users: {', '.join(d['users']) or '(none)'}")
+            d["users"][arg]["totp"], d["users"][arg]["recovery"] = _empty_totp(), []
+            d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("user") != arg}
             _save(d)
-        print("2FA is off and every session is signed out." + (" The password is cleared: the next visit to the login page sets a new one." if "--password" in sys.argv else "") + " Sign in and set 2FA up again.")
-    elif cmd == "setup-code":                          # for the first visit from outside the local network
-        if password_is_custom():
-            print("A password is already set, so no setup code is needed.")
+            print(f"2FA is off for {arg} and their sessions are signed out. They can sign in and set 2FA up again.")
+        elif cmd == "set-password":                    # forgotten password: set a new one (asks twice, never echoed)
+            if arg not in d["users"]:
+                sys.exit(f"no such user. Users: {', '.join(d['users']) or '(none)'}")
+            a, b = getpass.getpass("New password: "), getpass.getpass("Again: ")
+            if a != b:
+                sys.exit("The two entries differ.")
+            _check_new_password(a)
+            d["users"][arg].update(_hash_pw(a))
+            d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("user") != arg}
+            _save(d)
+            print(f"Password changed for {arg}; their sessions are signed out.")
+        elif cmd == "remove-all-users":                # start over: the next visit creates the first account again
+            d["users"], d["sessions"] = {}, {}
+            _save(d)
+            print("All accounts removed. The next visit to the login page creates the first account.")
+        elif cmd == "setup-code":                      # for the first visit from outside the local network
+            if d["users"]:
+                print("An account already exists, so no setup code is needed.")
+            else:
+                print("Setup code (valid 1 hour, works once):", make_setup_code())
         else:
-            print("Setup code (valid 1 hour, works once):", make_setup_code())
-    else:
-        s = status("")
-        print("2FA:", "on" if s["totp"] else "off", "| recovery codes left:", s["recovery_left"], "| sessions:", len(s["sessions"]))
+            print("users:", ", ".join(f"{n} ({u.get('role')}, 2FA {'on' if _totp_on(u) else 'off'})" for n, u in d["users"].items()) or "(none: first visit creates the first account)")
+            print("sessions:", len(d["sessions"]))
+
+
+if __name__ == "__main__":
+    _cli()

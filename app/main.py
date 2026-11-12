@@ -64,8 +64,8 @@ def _same_origin(headers) -> bool:
 
 @app.on_event("startup")
 async def _first_run_notice():
-    if not auth.password_is_custom():
-        log.warning("LCARS first run: open the login page and choose a password. From the local network that is all; from "
+    if not auth.users_exist():
+        log.warning("LCARS first run: open the login page and create the first account. From the local network that is all; from "
                     "anywhere else it needs this one-time setup code (valid 1 hour): %s   (new one: python3 -m app.auth setup-code)",
                     auth.make_setup_code())
 
@@ -73,7 +73,7 @@ async def _first_run_notice():
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/api/login", "/api/login/info", "/api/login/setup"):
+    if path in ("/login", "/api/login", "/api/login/info", "/api/login/setup", "/static/sf-logo.png"):
         return await call_next(request)
     if not _authorized(request.headers, request.cookies, request.client.host if request.client else None):
         if path.startswith("/api/"):
@@ -92,36 +92,41 @@ LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
 :root{color-scheme:dark}
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
-main{display:grid;gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px}
+main{display:grid;gap:12px;width:min(320px,90vw)}#logo{display:block;margin:0 auto 6px;width:120px;height:120px}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
-input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}</style>
-<main><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
-<input id=u name=username type=text value=lcars autocomplete=username aria-label=Username>
-<input id=t name=password type=password placeholder="Password" autofocus autocomplete=current-password>
+input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
+p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
+<main><img id=logo src=/static/sf-logo.png width=120 height=120 alt="Starfleet Command" decoding=async><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
+<input id=u name=username type=text placeholder="Username" autofocus autocomplete=username autocapitalize=none spellcheck=false required>
+<input id=t name=password type=password placeholder="Password" autocomplete=current-password required>
 <input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
 <input id=sc name=setup-code placeholder="Setup code from the server" autocomplete=one-time-code hidden>
 <button id=b>AUTHORIZE</button></form>
-<form id=f2 onsubmit="return go2(event)" method=post action=/login hidden><h1>TWO-STEP CODE</h1>
+<template id=tpl2><form id=f2 onsubmit="return go2(event)" method=post action=/login><h1>TWO-STEP CODE</h1>
 <input id=c name=totp placeholder="6-digit code" autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
-<button>VERIFY</button><a id=rec href=# onclick="return recov()">Use a recovery code instead</a></form>
+<p>If your account does not use 2FA, leave this empty.</p>
+<button>VERIFY</button><a id=rec href=# onclick="return recov()">Use a recovery code instead</a></form></template>
 <div id=m></div></main>
 <script>let setup=false,need=false;
-fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;sc.hidden=!j.setup_code;b.textContent='SET PASSWORD'}else need=j.code}).catch(()=>{});
-function recov(){c.placeholder='Recovery code';c.inputMode='text';c.setAttribute('aria-label','Recovery code');rec.hidden=true;c.focus();return false}
-async function login(){const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
+fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CREATE ACCOUNT';u.placeholder='Choose a username';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;t2.required=true;sc.hidden=!j.setup_code;b.textContent='CREATE ACCOUNT'}else need=j.code}).catch(()=>{});
+function recov(){const c=document.getElementById('c'),rec=document.getElementById('rec');c.placeholder='Recovery code';c.inputMode='text';c.setAttribute('aria-label','Recovery code');rec.hidden=true;c.focus();return false}
+function step2(){f1.hidden=true;m.textContent='';const f=tpl2.content.cloneNode(true);document.querySelector('main').insertBefore(f,m);   // a fresh form, so a password manager measures it where it really is
+requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>document.getElementById('c').focus(),60)))}
+async function login(){const c=document.getElementById('c');const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,token:t.value,code:c?c.value:''})});
 if(r.ok){location.href='/';return}
-f2.hidden=true;f1.hidden=false;t.value='';c.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';t.focus()}
+const f2=document.getElementById('f2');if(f2)f2.remove();f1.hidden=false;t.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';t.focus()}
 async function go(e){e.preventDefault();m.textContent='';
 if(setup){if(t.value!==t2.value){m.textContent='The passwords do not match';return false}
-const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:t.value,code:sc.value})});
+const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,password:t.value,code:sc.value})});
 if(r.ok)location.href='/?settings=1';else{const j=await r.json().catch(()=>({}));m.textContent=j.detail||'Not available from here'}return false}
-if(need){f1.hidden=true;f2.hidden=false;c.focus();return false}   // the password is checked together with the code, so nothing reveals which was wrong
+if(need){step2();return false}   // everything is checked together after the code step, so nothing reveals which part was wrong
 await login();return false}
 async function go2(e){e.preventDefault();await login();return false}</script>"""
 
 
 class LoginBody(BaseModel):
-    token: str
+    username: str = ""
+    token: str                 # the password (kept under this name for programs that already call it)
     code: str = ""
 
 
@@ -133,13 +138,20 @@ async def login_page():
 @app.get("/api/login/info")
 async def login_info(request: Request):
     host = request.client.host if request.client else None
-    setup = not auth.password_is_custom()
-    return {"code": auth.two_factor_on(), "setup": setup, "setup_code": setup and not auth.direct_lan(request.headers, host)}
+    setup = not auth.users_exist()
+    return {"code": auth.two_factor_any(), "setup": setup, "setup_code": setup and not auth.direct_lan(request.headers, host)}
 
 
 class SetupBody(BaseModel):
+    username: str
     password: str
     code: str = ""
+
+
+def _set_cookie(resp, request: Request, sid: str):
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp.set_cookie(COOKIE, sid, httponly=True, samesite="strict", secure=secure, max_age=auth.SESSION_MAX)
+    return resp
 
 
 @app.post("/api/login/setup")
@@ -148,22 +160,19 @@ async def login_setup(body: SetupBody, request: Request):
     ip = _client(request.headers, host)
     if not _same_origin(request.headers):
         return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
-    if auth.password_is_custom():
+    if auth.users_exist():
         return JSONResponse({"error": "not available"}, status_code=403)
     direct = auth.direct_lan(request.headers, host)
     if not direct and auth.blocked(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
     try:
-        auth.setup_password(body.password, body.code, direct)
+        name = auth.setup_first_user(body.username, body.password, body.code, direct)
     except ValueError as e:
         if "setup code" in str(e):
             auth._fail(ip)
         return JSONResponse({"detail": str(e)}, status_code=422)
-    sid = auth.new_session(ip, request.headers.get("user-agent", ""))
-    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
-    resp = JSONResponse({"ok": True})
-    resp.set_cookie(COOKIE, sid, httponly=True, samesite="strict", secure=secure, max_age=auth.SESSION_MAX)
-    return resp
+    sid = auth.new_session(name, ip, request.headers.get("user-agent", ""))
+    return _set_cookie(JSONResponse({"ok": True}), request, sid)
 
 
 @app.post("/api/login")
@@ -175,20 +184,27 @@ async def login(body: LoginBody, request: Request):
     local = auth.is_local(request.headers, host)
     if not local and auth.blocked(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
-    sid = auth.login(body.token, body.code, TOKEN, ip, request.headers.get("user-agent", ""), local)
+    sid = auth.login(body.username, body.token, body.code, TOKEN, ip, request.headers.get("user-agent", ""), local)
     if not sid:
         await asyncio.sleep(1)           # slows guessing a little more
         return JSONResponse({"error": "denied"}, status_code=401)
-    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
-    resp = JSONResponse({"ok": True})
-    resp.set_cookie(COOKIE, sid, httponly=True, samesite="strict", secure=secure, max_age=auth.SESSION_MAX)
-    return resp
+    return _set_cookie(JSONResponse({"ok": True}), request, sid)
 
 
-# ── account: password, 2FA, sessions ───────────────────────────────────
+# ── account: password, 2FA, users, sessions ────────────────────────────
 class PwBody(BaseModel):
     current: str
     new: str
+
+
+class NameBody(BaseModel):
+    new: str
+    current: str
+
+
+class UserBody(BaseModel):
+    username: str
+    password: str
 
 
 class CodeBody(BaseModel):
@@ -197,6 +213,13 @@ class CodeBody(BaseModel):
 
 def _sid(request: Request) -> str:
     return request.cookies.get(COOKIE, "")
+
+
+def _me(request: Request) -> str:
+    me = auth.session_user(_sid(request))
+    if not me:
+        raise HTTPException(403, "sign in with an account to change account settings")
+    return me
 
 
 @app.get("/api/auth/status")
@@ -219,7 +242,7 @@ async def auth_logout_others(request: Request):
 
 
 def _guarded(request: Request, fn, *a):
-    """Account changes count wrong guesses like a login does, so a stolen session cannot be used to guess the password."""
+    """Account changes count wrong guesses like a login does, so a stolen session cannot be used to guess a password."""
     host = request.client.host if request.client else None
     ip = _client(request.headers, host)
     if not auth.is_local(request.headers, host) and auth.blocked(ip):
@@ -233,24 +256,39 @@ def _guarded(request: Request, fn, *a):
 
 @app.post("/api/auth/password")
 async def auth_password(body: PwBody, request: Request):
-    host = request.client.host if request.client else None
-    _guarded(request, auth.change_password, body.current, body.new, TOKEN, auth.is_local(request.headers, host), _sid(request))
+    _guarded(request, auth.change_password, _me(request), body.current, body.new, _sid(request))
+    return {"ok": True}
+
+
+@app.post("/api/auth/username")
+async def auth_username(body: NameBody, request: Request):
+    return {"username": _guarded(request, auth.change_username, _me(request), body.new, body.current, _sid(request))}
+
+
+@app.post("/api/auth/users")
+async def auth_add_user(body: UserBody, request: Request):
+    return {"username": _guarded(request, auth.add_user, _me(request), body.username, body.password)}
+
+
+@app.delete("/api/auth/users")
+async def auth_remove_user(username: str, request: Request):
+    _guarded(request, auth.remove_user, _me(request), username)
     return {"ok": True}
 
 
 @app.post("/api/auth/totp/begin")
 async def totp_begin(request: Request):
-    return _guarded(request, auth.totp_begin)
+    return _guarded(request, auth.totp_begin, _me(request))
 
 
 @app.post("/api/auth/totp/confirm")
 async def totp_confirm(body: CodeBody, request: Request):
-    return {"recovery": _guarded(request, auth.totp_confirm, body.code)}
+    return {"recovery": _guarded(request, auth.totp_confirm, _me(request), body.code)}
 
 
 @app.post("/api/auth/totp/disable")
 async def totp_disable(body: CodeBody, request: Request):
-    _guarded(request, auth.totp_disable, body.code)
+    _guarded(request, auth.totp_disable, _me(request), body.code)
     return {"ok": True}
 
 
