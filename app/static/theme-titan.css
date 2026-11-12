@@ -67,6 +67,16 @@ html[data-theme=titan] #blk-agents .rail-title{color:var(--ice)}
 html[data-theme=titan] .rail-add{background:var(--blue);border-radius:9px;color:var(--ink)}
 html[data-theme=titan] .rail-ico{color:var(--ice)}
 html[data-theme=titan] .mrow .cap{background:var(--peach);border-radius:14px 0 0 14px}
+/* each machine gets a region tint like the star chart: this server peach, then gold, green, blue, red */
+html[data-theme=titan] .mrow[data-mi="1"] .cap{background:#c9a24a}
+html[data-theme=titan] .mrow[data-mi="2"] .cap{background:#4fa57a}
+html[data-theme=titan] .mrow[data-mi="3"] .cap{background:#5f8fd0}
+html[data-theme=titan] .mrow[data-mi="1"] .bar{background:#4a3d1c}
+html[data-theme=titan] .mrow[data-mi="2"] .bar{background:#1c4a38}
+html[data-theme=titan] .mrow[data-mi="3"] .bar{background:#1f3a66}
+html[data-theme=titan] .mrow[data-mi="1"] .st{border-color:#4a3d1c}
+html[data-theme=titan] .mrow[data-mi="2"] .st{border-color:#1c4a38}
+html[data-theme=titan] .mrow[data-mi="3"] .st{border-color:#1f3a66}
 /* like the wallpaper's teal tags with bright cyan text and a peach end cap */
 html[data-theme=titan] .mrow .bar{background:#1d4a66;color:#d6f1ff;border-radius:0 14px 14px 0;box-shadow:none}
 html[data-theme=titan] .mrow .mn{font-weight:700;color:#d6f1ff}

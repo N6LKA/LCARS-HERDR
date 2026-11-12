@@ -931,6 +931,7 @@ function machineRow(name, mi) {
   const row = document.createElement('div');
   row.className = 'mrow' + (name ? '' : ' local') + (collapsedMachines.has(name) ? '' : ' open');
   row.style.setProperty('--c', MACHINE_COLORS[mi % MACHINE_COLORS.length]);
+  row.dataset.mi = String(mi % 4);
   if (name) row.style.setProperty('--dot', state === 'connected' ? '#44cc44' : state === 'connecting' ? 'var(--gold)' : '#ff5544');
   row.innerHTML = '<span class="cap"></span><span class="bar"><button class="mn"></button><button class="mplus" title="New space on this machine">+</button><button class="st"></button><button class="chev">›</button></span>';
   $('.mn', row).textContent = machineLabel(name);
