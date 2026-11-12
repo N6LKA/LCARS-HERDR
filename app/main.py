@@ -73,7 +73,7 @@ async def _first_run_notice():
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/api/login", "/api/login/info", "/api/login/setup", "/static/sf-logo.png"):
+    if path in ("/login", "/api/login", "/api/login/info", "/api/login/setup", "/api/login/start", "/login/code", "/static/sf-logo.png"):
         return await call_next(request)
     if not _authorized(request.headers, request.cookies, request.client.host if request.client else None):
         if path.startswith("/api/"):
@@ -102,32 +102,28 @@ p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
 <input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
 <input id=sc name=setup-code placeholder="Setup code from the server" autocomplete=one-time-code hidden>
 <button id=b>AUTHORIZE</button></form>
-<template id=tpl2><form id=f2 onsubmit="return go2(event)" method=post action=/login><h1>TWO-STEP CODE</h1>
-<input id=c name=totp placeholder="6-digit code" autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
-<p>If your account does not use 2FA, leave this empty.</p>
-<button>VERIFY</button><a id=rec href=# onclick="return recov()">Use a recovery code instead</a></form></template>
+
 <div id=m></div></main>
 <script>let setup=false,need=false;
 fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CREATE ACCOUNT';u.placeholder='Choose a username';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;t2.required=true;sc.hidden=!j.setup_code;b.textContent='CREATE ACCOUNT'}else need=j.code}).catch(()=>{});
-function recov(){const c=document.getElementById('c'),rec=document.getElementById('rec');c.placeholder='Recovery code';c.inputMode='text';c.setAttribute('aria-label','Recovery code');rec.hidden=true;c.focus();return false}
-function step2(){f1.hidden=true;m.textContent='';const f=tpl2.content.cloneNode(true);document.querySelector('main').insertBefore(f,m);   // a fresh form, so a password manager measures it where it really is
-requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>document.getElementById('c').focus(),60)))}
-async function login(){const c=document.getElementById('c');const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,token:t.value,code:c?c.value:''})});
+async function login(){const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,token:t.value,code:''})});
 if(r.ok){location.href='/';return}
-const f2=document.getElementById('f2');if(f2)f2.remove();f1.hidden=false;t.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';t.focus()}
+t.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';t.focus()}
+if(new URLSearchParams(location.search).has('denied'))m.textContent=new URLSearchParams(location.search).get('denied')=='429'?'Too many attempts. Wait a few minutes.':'Access denied';
 async function go(e){e.preventDefault();m.textContent='';
 if(setup){if(t.value!==t2.value){m.textContent='The passwords do not match';return false}
 const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,password:t.value,code:sc.value})});
 if(r.ok)location.href='/?settings=1';else{const j=await r.json().catch(()=>({}));m.textContent=j.detail||'Not available from here'}return false}
-if(need){step2();return false}   // everything is checked together after the code step, so nothing reveals which part was wrong
-await login();return false}
-async function go2(e){e.preventDefault();await login();return false}</script>"""
+if(need){const r=await fetch('/api/login/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,token:t.value})});   // password page done: the code is its own page
+if(r.ok){const j=await r.json();sessionStorage.setItem('lcars-ticket',j.ticket);location.href='/login/code'}else{t.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Something went wrong';}return false}   // everything is checked together after the code step, so nothing reveals which part was wrong
+await login();return false}</script>"""
 
 
 class LoginBody(BaseModel):
     username: str = ""
-    token: str                 # the password (kept under this name for programs that already call it)
+    token: str = ""            # the password (kept under this name for programs that already call it)
     code: str = ""
+    ticket: str = ""           # set instead of username+token when finishing the two-page login
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -140,6 +136,55 @@ async def login_info(request: Request):
     host = request.client.host if request.client else None
     setup = not auth.users_exist()
     return {"code": auth.two_factor_any(), "setup": setup, "setup_code": setup and not auth.direct_lan(request.headers, host)}
+
+
+class StartBody(BaseModel):
+    username: str = ""
+    token: str = ""
+
+
+@app.post("/api/login/start")
+async def login_start(body: StartBody, request: Request):
+    """Page one of the two-page login. It always answers with a ticket, whatever was typed, so nothing is revealed."""
+    host = request.client.host if request.client else None
+    ip = _client(request.headers, host)
+    if not _same_origin(request.headers):
+        return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
+    if not auth.is_local(request.headers, host) and auth.blocked(ip):
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
+    try:
+        return {"ticket": auth.start(body.username, body.token, ip)}
+    except ValueError:
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
+
+
+CODE_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
+:root{color-scheme:dark}
+body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
+main{display:grid;gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
+#logo{display:block;margin:0 auto 6px;width:120px;height:120px}
+input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
+input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
+p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
+<main><img id=logo src=/static/sf-logo.png width=120 height=120 alt="Starfleet Command">
+<form id=f onsubmit="return go(event)" method=post action=/login/code><h1>TWO-STEP CODE</h1>
+<input id=c name=totp type=text placeholder="6-digit code" autofocus autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
+<p>If your account does not use 2FA, leave this empty.</p>
+<button>VERIFY</button><a id=rec href=# onclick="return recov()">Use a recovery code instead</a><a href=/login>Start over</a></form>
+<div id=m></div></main>
+<script>const ticket=sessionStorage.getItem('lcars-ticket');if(!ticket)location.replace('/login');
+function recov(){c.placeholder='Recovery code';c.inputMode='text';c.setAttribute('aria-label','Recovery code');rec.hidden=true;c.focus();return false}
+async function go(e){e.preventDefault();m.textContent='';
+const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket,code:c.value})});
+sessionStorage.removeItem('lcars-ticket');   // a ticket works once
+if(r.ok){location.href='/';return}
+location.replace('/login?denied='+(r.status==429?'429':'1'))}</script>"""
+
+
+@app.get("/login/code", response_class=HTMLResponse)
+async def login_code_page():
+    return CODE_PAGE
 
 
 class SetupBody(BaseModel):
@@ -184,7 +229,8 @@ async def login(body: LoginBody, request: Request):
     local = auth.is_local(request.headers, host)
     if not local and auth.blocked(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
-    sid = auth.login(body.username, body.token, body.code, TOKEN, ip, request.headers.get("user-agent", ""), local)
+    ua = request.headers.get("user-agent", "")
+    sid = auth.login_ticket(body.ticket, body.code, ip, ua) if body.ticket else auth.login(body.username, body.token, body.code, TOKEN, ip, ua, local)
     if not sid:
         await asyncio.sleep(1)           # slows guessing a little more
         return JSONResponse({"error": "denied"}, status_code=401)

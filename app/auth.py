@@ -34,7 +34,7 @@ STATE_FILE = Path(os.environ.get("LCARS_AUTH_FILE") or Path(__file__).resolve().
 SESSION_MAX = 30 * 86400      # absolute lifetime
 SESSION_IDLE = 7 * 86400      # unused for this long = gone
 PER_IP = (5, 300)             # failures, seconds
-GLOBAL = (40, 3600)
+GLOBAL = (200, 3600)          # wrong tries from all addresses together; high on purpose, a low cap would let anyone lock everyone out
 ISSUER = "LCARS"
 MIN_PASSWORD = 12
 USER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
@@ -239,6 +239,43 @@ def new_session(user: str, ip: str, ua: str) -> str:
         return sid
 
 
+def _check_password(d: dict, username: str, password: str):
+    """(name, user record or None, password right?). Hashes even for an unknown user, so the time is the same either way."""
+    name = (username or "").strip().lower()
+    u = d["users"].get(name)
+    salt = bytes.fromhex(u["salt"]) if u else _DUMMY_SALT
+    good = hmac.compare_digest(_scrypt(password, salt), u["hash"] if u else "0" * 64) and bool(u)
+    return name, u, good
+
+
+def _complete(d: dict, name: str, u: dict | None, good: bool, code: str, ip: str, ua: str) -> str | None:
+    """Second factor (when the user has one), then a session. A code is used up only by a login that fully succeeds."""
+    ok, new_last, used = good, None, None
+    if u and _totp_on(u):
+        t = u["totp"]
+        c = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
+        second = False
+        if len(c) == 6 and c.isdigit():
+            m = _totp_match(t["secret"], c, t["last"])
+            if m:
+                second, new_last = True, m
+        elif c:
+            hh = _h(c)
+            if hh in u["recovery"]:
+                second, used = True, hh
+        ok = ok and second
+    if not ok:
+        _fail(ip)
+        return None
+    if new_last:
+        u["totp"]["last"] = new_last
+    if used:
+        u["recovery"].remove(used)
+    sid = _new_session(d, name, ip, ua)
+    _save(d)
+    return sid
+
+
 def login(username: str, password: str, code: str, env: str, ip: str, ua: str, local: bool) -> str | None:
     """A new session id, or None. Every check runs even when an earlier one failed."""
     with _lock:
@@ -249,35 +286,46 @@ def login(username: str, password: str, code: str, env: str, ip: str, ua: str, l
             sid = _new_session(d, admin, ip, ua)
             _save(d)
             return sid
-        name = (username or "").strip().lower()
-        u = d["users"].get(name)
-        salt = bytes.fromhex(u["salt"]) if u else _DUMMY_SALT          # hash even for an unknown user: same time either way
-        good = hmac.compare_digest(_scrypt(password, salt), u["hash"] if u else "0" * 64) and bool(u)
-        ok = good
-        new_last = used = None
-        if u and _totp_on(u):
-            t = u["totp"]
-            c = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
-            second = False
-            if len(c) == 6 and c.isdigit():
-                m = _totp_match(t["secret"], c, t["last"])
-                if m:
-                    second, new_last = True, m
-            elif c:
-                hh = _h(c)
-                if hh in u["recovery"]:
-                    second, used = True, hh
-            ok = ok and second
-        if not ok:
+        name, u, good = _check_password(d, username, password)
+        return _complete(d, name, u, good, code, ip, ua)
+
+
+# Two-page login (password page, then a separate code page). The server keeps a short-lived, single-use ticket between them.
+# It holds only the username and whether the password was right, never the password, and the browser is never told which.
+TICKET_TTL = 120
+START_LIMIT = (20, 300)       # password pages per address (each costs a password hash)
+_pending: dict[str, dict] = {}
+_starts: dict[str, list[float]] = {}
+
+
+def start(username: str, password: str, ip: str) -> str:
+    with _lock:
+        now = time.time()
+        _starts[ip] = [t for t in _starts.get(ip, []) if now - t < START_LIMIT[1]]
+        if len(_starts[ip]) >= START_LIMIT[0]:
+            raise ValueError("too many attempts")
+        _starts[ip].append(now)
+        for k in [k for k, v in _pending.items() if v["exp"] < now]:
+            del _pending[k]
+        if len(_pending) > 500:                           # never grows without bound
+            for k in sorted(_pending, key=lambda k: _pending[k]["exp"])[:100]:
+                del _pending[k]
+        name, u, good = _check_password(_load(), username, password)
+        ticket = secrets.token_urlsafe(24)
+        _pending[ticket] = {"user": name, "ok": good, "ip": ip, "exp": now + TICKET_TTL}
+        return ticket
+
+
+def login_ticket(ticket: str, code: str, ip: str, ua: str) -> str | None:
+    """Finish a two-page login. The ticket works once, from the address that asked for it, within two minutes."""
+    with _lock:
+        t = _pending.pop(ticket or "", None)
+        if not t or t["exp"] < time.time() or t["ip"] != ip:
             _fail(ip)
             return None
-        if new_last:                                     # a code is used up only by a login that fully succeeds
-            u["totp"]["last"] = new_last
-        if used:
-            u["recovery"].remove(used)
-        sid = _new_session(d, name, ip, ua)
-        _save(d)
-        return sid
+        d = _load()
+        u = d["users"].get(t["user"])
+        return _complete(d, t["user"], u, bool(t["ok"] and u), code, ip, ua)
 
 
 def _prune(d: dict) -> None:
