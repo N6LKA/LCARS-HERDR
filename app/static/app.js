@@ -73,6 +73,7 @@ function toast(msg, err = false) {
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
 const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : (t.status && t.status.state === 'done' && viewed.get(t.address) === t.turn ? 'idle' : ((t.status && t.status.state) || 'live'));
+const swapping = new Set();   // panes whose terminal is being replaced on purpose: their old terminal ending must not close them
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
 const agentById = id => S.agents.find(a => a.id === id);
 const PROGRAMS = { claude: 'Claude Code', 'claude-code': 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex', grok: 'Grok', opencode: 'OpenCode',
@@ -228,7 +229,7 @@ function prune() {   // drop panes whose terminal is gone (ended while this page
     for (const a of leaves(tab.root)) {
       const mv = machineOf(a) && machineView(machineOf(a));
       if (machineOf(a) && !(mv && mv.state === 'connected')) continue;      // not connected (or not known yet): keep its panes
-      if (!S.terms.has(a) && !S.fresh.has(a)) { tab.root = removeLeaf(tab.root, a); changed = true; }
+      if (!S.terms.has(a) && !S.fresh.has(a) && !swapping.has(a)) { tab.root = removeLeaf(tab.root, a); changed = true; }
     }
   }
   if (changed) saveLayout();
@@ -364,7 +365,6 @@ async function renameTab(id) {
   if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
 }
 const SESSION_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-const swapping = new Set();   // panes whose terminal is being replaced on purpose: their old terminal ending must not close them
 function replaceAddress(oldAddr, newAddr) {   // the same pane, now backed by a new terminal
   const re = a => a === oldAddr ? newAddr : a;
   const walk = n => !n ? n : isLeaf(n) ? { ...n, a: re(n.a) } : { ...n, c: n.c.map(walk) };
