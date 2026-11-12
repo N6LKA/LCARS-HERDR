@@ -95,11 +95,12 @@ body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:
 form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em}</style>
-<form onsubmit="return go(event)"><h1 id=h>LCARS ACCESS</h1>
-<input id=t type=password placeholder="Password" autofocus autocomplete=current-password>
-<input id=t2 type=password placeholder="Password again" autocomplete=new-password hidden>
-<input id=sc placeholder="Setup code from the server" autocomplete=off hidden>
-<input id=c placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
+<form onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
+<input id=u name=username type=text value=lcars autocomplete=username aria-label=Username>
+<input id=t name=password type=password placeholder="Password" autofocus autocomplete=current-password>
+<input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
+<input id=sc name=setup-code placeholder="Setup code from the server" autocomplete=one-time-code hidden>
+<input id=c name=totp placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
 <button id=b>AUTHORIZE</button><div id=m></div></form>
 <script>let setup=false;fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;sc.hidden=!j.setup_code;b.textContent='SET PASSWORD'}else if(j.code)c.hidden=false}).catch(()=>{});
 async function go(e){e.preventDefault();m.textContent='';

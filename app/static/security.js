@@ -16,7 +16,7 @@
     on = s.totp;
     $('#sec-2fa-state').textContent = on ? `ON. ${s.recovery_left} recovery code(s) left.` : 'OFF. Logging in needs only the password.';
     $('#sec-2fa-go').textContent = on ? 'TURN OFF 2FA' : setting ? 'CONFIRM CODE' : 'SET UP 2FA';
-    $('#sec-2fa-setup').hidden = on || !setting;
+    $('#sec-2fa-setup').hidden = on || !setting; $('#sec-code-l').hidden = on ? true : !setting;
     $('#sec-sessions').replaceChildren(...s.sessions.map(x => {
       const d = document.createElement('div'); d.className = 'dim';
       d.textContent = `${x.current ? 'THIS DEVICE · ' : ''}${x.ip} · ${when(x.last)} · ${(x.ua.match(/(Firefox|Edg|Chrome|Safari)[^ ]*/) || [x.ua.slice(0, 40)])[0]}`;
@@ -28,7 +28,7 @@
     for (const i of ['#sec-cur', '#sec-new', '#sec-new2', '#sec-code']) $(i).value = '';
     for (const m of ['#sec-pw-msg', '#sec-2fa-msg']) say(m, '');
     setting = false; $('#sec-recovery').hidden = true;
-    $('#sec-dlg').showModal(); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
+    $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-cur').focus(); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
   }
 
   async function changePw() {
@@ -55,9 +55,11 @@
     $('#btn-settings').onclick = open;
     if (new URLSearchParams(location.search).has('settings')) { history.replaceState(null, '', '/'); setTimeout(open, 600); }   // right after choosing a password: offer 2FA
     $('#side-settings').onclick = () => { document.body.classList.remove('side-open'); open(); };
-    $('#sec-close').onclick = () => { $('#sec-dlg').close(); $('#sec-rc').textContent = ''; };
-    $('#sec-pw').onclick = changePw;
-    $('#sec-2fa-go').onclick = twoFa;
+    const shut = () => { $('#sec-dlg').close(); $('#sec-back').hidden = true; $('#sec-rc').textContent = ''; };
+    $('#sec-close').onclick = shut; $('#sec-back').onclick = shut;
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#sec-dlg').open) shut(); });
+    $('#sec-pwform').addEventListener('submit', ev => { ev.preventDefault(); changePw(); });
+    $('#sec-2faform').addEventListener('submit', ev => { ev.preventDefault(); twoFa(); });
     $('#sec-copy').onclick = async () => { try { await navigator.clipboard.writeText($('#sec-secret').textContent); say('#sec-2fa-msg', 'Copied.'); } catch { say('#sec-2fa-msg', 'Copy needs https. Select the key and copy it by hand.', true); } };
     $('#sec-others').onclick = async () => { try { await api('/api/auth/logout-others', {}); refresh(); } catch (e) { say('#sec-2fa-msg', e.message, true); } };
     $('#sec-out').onclick = async () => { try { await api('/api/auth/logout', {}); } catch {} location.href = '/login'; };

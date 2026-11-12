@@ -116,29 +116,35 @@
   </form>
 </dialog>
 
-<dialog id="sec-dlg">
+<div id="sec-back" hidden></div>
+<dialog id="sec-dlg" aria-labelledby="sec-title">
   <div id="sec-form">
-    <h3>SETTINGS</h3>
+    <h3 id="sec-title">SETTINGS</h3>
     <section><h4>PASSWORD</h4>
-      <label>CURRENT<input id="sec-cur" type="password" autocomplete="current-password"></label>
-      <label>NEW (12+ CHARACTERS)<input id="sec-new" type="password" autocomplete="new-password"></label>
-      <label>NEW AGAIN<input id="sec-new2" type="password" autocomplete="new-password"></label>
-      <div class="row"><button class="pill orange" id="sec-pw">CHANGE PASSWORD</button></div>
+      <form id="sec-pwform" autocomplete="on" action="#">
+        <input class="vh" type="text" name="username" autocomplete="username" value="lcars" readonly tabindex="-1" aria-hidden="true">
+        <label>CURRENT<input id="sec-cur" name="current-password" type="password" autocomplete="current-password"></label>
+        <label>NEW (12+ CHARACTERS)<input id="sec-new" name="new-password" type="password" autocomplete="new-password"></label>
+        <label>NEW AGAIN<input id="sec-new2" name="new-password-confirm" type="password" autocomplete="new-password"></label>
+        <div class="row"><button class="pill orange" id="sec-pw">CHANGE PASSWORD</button></div>
+      </form>
       <p class="dim" id="sec-pw-msg"></p></section>
     <section><h4>TWO-STEP LOGIN</h4>
       <p class="dim" id="sec-2fa-state"></p>
-      <div id="sec-2fa-setup" hidden>
-        <p class="ip">Add this to your authenticator app. On a phone, tap OPEN; otherwise choose "enter a setup key" and paste the key. Then type the 6-digit code it shows.</p>
-        <div class="icode"><code id="sec-secret"></code><button type="button" class="pill orange" id="sec-copy">COPY</button></div>
-        <a id="sec-open" class="pill sky" href="#">OPEN IN AUTHENTICATOR</a>
-        <label>6-DIGIT CODE<input id="sec-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
-      </div>
-      <div id="sec-recovery" hidden><p class="ip">Recovery codes. Each works once if you lose your phone. They are shown only now, so save them somewhere safe:</p><pre id="sec-rc"></pre></div>
-      <div class="row"><button class="pill orange" id="sec-2fa-go">SET UP 2FA</button></div>
+      <form id="sec-2faform" autocomplete="on" action="#">
+        <div id="sec-2fa-setup" hidden>
+          <p class="ip">Add this to your authenticator app, or to the TOTP field of your Bitwarden item (paste the key). Then type the 6-digit code it shows.</p>
+          <div class="icode"><code id="sec-secret"></code><button type="button" class="pill orange" id="sec-copy">COPY</button></div>
+          <a id="sec-open" class="pill sky" href="#">OPEN IN AUTHENTICATOR</a>
+        </div>
+        <label id="sec-code-l" hidden>6-DIGIT CODE<input id="sec-code" name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+        <div id="sec-recovery" hidden><p class="ip">Recovery codes. Each works once if you lose your phone. They are shown only now, so save them somewhere safe:</p><pre id="sec-rc"></pre></div>
+        <div class="row"><button class="pill orange" id="sec-2fa-go">SET UP 2FA</button></div>
+      </form>
       <p class="dim" id="sec-2fa-msg"></p></section>
     <section><h4>SIGNED-IN DEVICES</h4><div id="sec-sessions"></div>
-      <div class="row"><button class="pill tan" id="sec-others">SIGN OUT OTHER DEVICES</button><button class="pill red" id="sec-out">SIGN OUT</button></div></section>
-    <div class="row"><button class="pill gray" id="sec-close">CLOSE</button></div>
+      <div class="row"><button type="button" class="pill tan" id="sec-others">SIGN OUT OTHER DEVICES</button><button type="button" class="pill red" id="sec-out">SIGN OUT</button></div></section>
+    <div class="row"><button type="button" class="pill gray" id="sec-close">CLOSE</button></div>
   </div>
 </dialog>
 <dialog id="mach-dlg">
