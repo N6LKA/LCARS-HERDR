@@ -65,6 +65,7 @@
       <div class="rail r-gold"></div>
       <div class="body foot">
         <button class="pill orange" id="new-claude">NEW CLAUDE</button>
+        <button class="pill peach" id="resume-btn" title="Pick an earlier Claude conversation and carry on with it">RESUME CLAUDE</button>
         <button class="pill lilac" id="new-shell">NEW SHELL</button>
         <button class="pill peach" id="agents-btn" title="Start another coding agent">MORE AGENTS ▾</button>
         <button class="pill tan" id="machine-add" title="Connect another machine over SSH">ADD MACHINE</button>
@@ -72,7 +73,7 @@
         <button class="pill tan" id="install-btn" hidden>INSTALL APP</button>
         <button class="pill violet" id="side-settings" title="Account: password, 2FA, sessions">SETTINGS</button>
         <button class="pill red" id="side-logout" title="Sign out of LCARS">SIGN OUT</button>
-        <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button></div>
+        <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button><button class="pill gold" id="stuck-btn" title="Warn when an agent says it is working but nothing has changed for this long">STUCK 10M</button></div>
       </div>
     </section>
     <input type="file" id="file-input" multiple hidden>
@@ -80,6 +81,7 @@
 
   <main id="main">
     <div id="mainc">
+      <div id="pstrip" hidden aria-label="Panes in this tab"></div>
       <div id="panes"></div>
       <div id="empty">
         <h2>THIS TAB IS EMPTY</h2>
@@ -187,6 +189,14 @@
   </form>
 </dialog>
 
+<dialog id="resume-dlg">
+  <form method="dialog">
+    <h3>RESUME A CONVERSATION</h3>
+    <label><input id="resume-q" placeholder="search name, folder or last message" autocomplete="off"></label>
+    <div id="resume-list"></div><div id="resume-note"></div>
+    <div class="row"><button class="pill gray" value="cancel" formnovalidate>CLOSE</button></div>
+  </form>
+</dialog>
 <dialog id="ask-dlg">
   <form method="dialog">
     <h3 id="ask-title">RENAME</h3>

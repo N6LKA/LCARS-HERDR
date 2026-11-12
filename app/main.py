@@ -408,9 +408,108 @@ async def status():
     return await rpc("server.status")
 
 
+def _claude_name(pid) -> str | None:
+    """The name a person gave a running Claude (/rename, or --name). Claude records it in ~/.claude/sessions/<pid>.json;
+    a name it made up itself is marked "derived" and is not reported."""
+    try:
+        d = json.loads((CLAUDE_DIR / "sessions" / f"{int(pid)}.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return None
+    n = d.get("name")
+    if d.get("nameSource") in (None, "derived") or not isinstance(n, str):
+        return None
+    return n.strip()[:40] or None
+
+
+def _live_session_ids() -> set[str]:
+    out = set()
+    for f in (CLAUDE_DIR / "sessions").glob("*.json"):
+        try:
+            d = json.loads(f.read_text())
+            if Path(f"/proc/{int(d['pid'])}").exists():
+                out.add(d["sessionId"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return out
+
+
+def _session_summary(path: Path) -> dict:
+    """What the picker shows for one saved conversation: its name, the folder, and the last thing asked.
+    Read from the head and tail of the transcript only (they can be large)."""
+    try:
+        size = path.stat().st_size
+        with open(path, "rb") as f:
+            head = f.read(65536).decode("utf-8", "ignore")
+            tail = ""
+            if size > 65536:
+                f.seek(max(0, size - 262144))
+                tail = f.read().decode("utf-8", "ignore")
+    except OSError:
+        return {}
+    out: dict = {}
+    custom = ai = last = None
+    for line in (head + "\n" + tail).splitlines():
+        if '"custom-title"' in line or '"ai-title"' in line or '"last-prompt"' in line or ('"cwd"' in line and "cwd" not in out):
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            t = d.get("type")
+            if t == "custom-title":
+                custom = d.get("customTitle") or custom
+            elif t == "ai-title":
+                ai = d.get("aiTitle") or ai
+            elif t == "last-prompt":
+                last = d.get("lastPrompt") or last
+            if isinstance(d.get("cwd"), str) and "cwd" not in out:
+                out["cwd"] = d["cwd"]
+    out["title"] = custom or ai or ""
+    out["named"] = bool(custom)
+    out["last"] = (last if isinstance(last, str) else "")[:140]
+    return out
+
+
+@app.get("/api/claude/sessions")
+async def claude_sessions(cwd: str | None = None, limit: int = 40):
+    """Past Claude conversations on this machine, newest first, for the resume picker."""
+    live = _live_session_ids()
+    files = []
+    for f in CLAUDE_DIR.glob("projects/*/*.jsonl"):
+        try:
+            files.append((f.stat().st_mtime, f))
+        except OSError:
+            pass
+    files.sort(reverse=True)
+    rows = []
+    for mt, f in files:
+        info = _session_summary(f)
+        if cwd and info.get("cwd") != cwd:
+            continue
+        if not info.get("title") and not info.get("last"):
+            continue   # opened and closed with nothing said: nothing to resume
+        rows.append({"id": f.stem, "mtime_ms": int(mt * 1000), "open": f.stem in live, **info})
+        if len(rows) >= max(1, min(limit, 200)):
+            break
+    return {"sessions": rows}
+
+
 @app.get("/api/terminals")
 async def list_terminals(all: bool = False):
-    return await rpc("terminal.list", {"all": all})
+    data = await rpc("terminal.list", {"all": all})
+    for t in data.get("terminals", []):
+        fg = t.get("foreground") or {}
+        if fg.get("name") == "claude" and fg.get("pid") and "/" not in str(t.get("address", "")):
+            n = _claude_name(fg["pid"])
+            labels = t.get("labels") or {}
+            if n and labels.get("cn") != n:
+                # Claude was named (or renamed) since we last looked: the pane label follows. A label-only rename done
+                # in LCARS afterwards is kept, because "cn" remembers which Claude name we already followed.
+                try:
+                    await rpc("terminal.label", {"terminal": t["address"], "labels": {"title": n, "cn": n}})
+                    t["labels"] = {**labels, "title": n, "cn": n}
+                except HTTPException:
+                    pass
+    return data
 
 
 class NewTerminal(BaseModel):
@@ -422,6 +521,7 @@ class NewTerminal(BaseModel):
     rows: int = 32
     on: str | None = None  # another machine added to the core
     args: list[str] = []
+    resume: str | None = None  # a Claude conversation (id from /api/claude/sessions) to pick up again
 
 
 @app.post("/api/terminals")
@@ -437,7 +537,25 @@ async def new_terminal(body: NewTerminal):
         "no_parent": True,
     }
     if body.kind == "claude":
-        params["argv"] = [CLAUDE_CMD, *body.args]
+        resume: list[str] = []
+        if body.resume:
+            sid = body.resume.strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", sid):
+                raise HTTPException(422, "resume: not a conversation id")
+            if body.on:
+                raise HTTPException(409, "resuming works on this machine only")
+            found = next(iter(CLAUDE_DIR.glob(f"projects/*/{sid}.jsonl")), None)
+            if not found:
+                raise HTTPException(404, "that conversation was not found")
+            if sid in _live_session_ids():
+                raise HTTPException(409, "that conversation is already open in a running Claude")
+            resume = ["--resume", sid]
+            info = _session_summary(found)
+            if info.get("title"):
+                params["labels"] = {**params["labels"], "title": info["title"][:40]}
+            if info.get("cwd") and not body.cwd:
+                body.cwd = info["cwd"]
+        params["argv"] = [CLAUDE_CMD, *resume, *body.args]
     elif body.kind == "agent":
         # the command comes from our own list, never from the page
         if body.agent not in agents.BY_ID:

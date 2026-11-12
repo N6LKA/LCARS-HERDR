@@ -5,11 +5,11 @@
 const $ = (s, r = document) => r.querySelector(s);
 const uid = () => Math.random().toString(36).slice(2, 9);
 const DOC = new URLSearchParams(location.search).get('doc') || 'lcars-web';
-const STATUS_WORD = { working: 'WORKING', blocked: 'NEEDS YOU', error: 'ERROR', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
-const STATUS_COLOR = { working: 'var(--s-working)', blocked: 'var(--s-blocked)', error: 'var(--red)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
-const RANK = { error: 5, blocked: 4, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
-const ORDER = { blocked: 0, error: 0.5, done: 1, working: 2, idle: 3, live: 4, ended: 5 };
-const GROUPS = [['blocked', 'NEEDS YOU'], ['error', 'ERROR'], ['done', 'DONE'], ['working', 'WORKING'], ['idle', 'IDLE'], ['live', 'LIVE']];
+const STATUS_WORD = { working: 'WORKING', stuck: 'STUCK?', blocked: 'NEEDS YOU', error: 'ERROR', done: 'DONE', idle: 'IDLE', live: 'LIVE', ended: 'ENDED' };
+const STATUS_COLOR = { working: 'var(--s-working)', stuck: '#ff7a1a', blocked: 'var(--s-blocked)', error: 'var(--red)', done: 'var(--s-done)', idle: 'var(--s-idle)', live: 'var(--s-live)', ended: 'var(--s-ended)' };
+const RANK = { error: 5, blocked: 4, stuck: 3.5, done: 3, working: 2, idle: 1, live: 0, ended: 0 };
+const ORDER = { blocked: 0, stuck: 0.3, error: 0.5, done: 1, working: 2, idle: 3, live: 4, ended: 5 };
+const GROUPS = [['blocked', 'NEEDS YOU'], ['stuck', 'STUCK?'], ['error', 'ERROR'], ['done', 'DONE'], ['working', 'WORKING'], ['idle', 'IDLE'], ['live', 'LIVE']];
 const pad2 = n => String(n).padStart(2, '0');
 const SPACE_COLORS = ['var(--tan)', 'var(--lilac)', 'var(--peach)', 'var(--sky)', 'var(--violet)', 'var(--gold)'];
 const BARS = '<i></i><i></i><i></i><i></i>';
@@ -72,7 +72,16 @@ function toast(msg, err = false) {
   const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
-const stateOf = t => (t.state && t.state !== 'live') ? 'ended' : (t.status && t.status.state === 'done' && viewed.get(t.address) === t.turn ? 'idle' : ((t.status && t.status.state) || 'live'));
+// An agent that says it is working but whose status has not changed for a while may be stuck (a minute limit; 0 = off)
+const STUCK_STEPS = [0, 5, 10, 20, 30];
+const stuckMin = () => { const v = parseInt(localStorage.getItem('lcars-stuck') ?? '10', 10); return STUCK_STEPS.includes(v) ? v : 10; };
+const stateOf = t => {
+  if (t.state && t.state !== 'live') return 'ended';
+  const s = t.status && t.status.state;
+  if (s === 'done' && viewed.get(t.address) === t.turn) return 'idle';
+  if (s === 'working' && stuckMin() && t.status_ms && Date.now() - t.status_ms > stuckMin() * 60000) return 'stuck';
+  return s || 'live';
+};
 const swapping = new Set();   // panes whose terminal is being replaced on purpose: their old terminal ending must not close them
 const isAgent = t => !!(t.status && t.status.app) || (t.labels && (t.labels.kind === 'claude' || t.labels.kind === 'agent'));
 const agentById = id => S.agents.find(a => a.id === id);
@@ -246,9 +255,15 @@ function adoptHelpers() {   // a terminal started by one of our panes opens besi
   }
   if (changed) saveLayout();
 }
+function stuckTick() {   // being stuck is a matter of time passing, not of an event, so look again now and then
+  let changed = false;
+  for (const t of S.terms.values()) { const now = stateOf(t), was = S.prev.get(t.address); if (was !== now) { statusChanged(t, was, now); S.prev.set(t.address, now); changed = true; } }
+  if (changed) render();
+}
 function statusChanged(t, was, now) {
   if (now === 'blocked') { play('tng_red_alert3'); toast(`${labelOf(t)} NEEDS YOU`, true); }
-  else if (now === 'done' && was === 'working') { play('padd_1'); toast(`${labelOf(t)} DONE`); }
+  else if (now === 'stuck') { play('padd_3'); toast(`${labelOf(t)} MAY BE STUCK`, true); }
+  else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); }
 }
 const sounds = {};
 function play(name) {
@@ -262,7 +277,7 @@ async function createTerminal(kind, opt = {}) {
   const machine = opt.machine !== undefined ? opt.machine : spaceMachine(curSpace());
   // a folder belongs to one machine: use it only if it was typed, or comes from a pane on the same machine
   const cwd = opt.cwd && (opt.explicit || opt.machine !== undefined || machineOf(S.focus || '') === machine) ? opt.cwd : undefined;
-  const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: cwd || undefined, on: machine || undefined, cols: 120, rows: 32 });
+  const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: cwd || undefined, on: machine || undefined, resume: opt.resume || undefined, cols: 120, rows: 32 });
   S.terms.set(t.address, t); S.fresh.set(t.address, Date.now());
   return t.address;
 }
@@ -410,6 +425,29 @@ async function newClaudeNamed(where) {
   const opt = { cwd: cwdOf(S.focus), ...(name ? { name } : {}) };
   return where === 'tab' ? newTabWith('claude', opt) : openBeside('claude', opt);
 }
+async function resumeClaude(where) {   // pick an earlier Claude conversation and carry on with it
+  if (spaceMachine(curSpace())) return toast('Resuming works on this server only for now', true);
+  const dlg = $('#resume-dlg'), list = $('#resume-list'), q = $('#resume-q');
+  let rows = [];
+  list.textContent = ''; q.value = ''; $('#resume-note').textContent = 'LOADING…';
+  if (!dlg.open) dlg.showModal();
+  try { rows = (await api('/api/claude/sessions?limit=80')).sessions; } catch (e) { $('#resume-note').textContent = e.message; return; }
+  const ago = ms => { const m = Math.max(0, Math.floor((Date.now() - ms) / 60000)); return m < 60 ? m + 'M' : m < 1440 ? Math.floor(m / 60) + 'H' : Math.floor(m / 1440) + 'D'; };
+  const draw = () => {
+    const f = q.value.trim().toLowerCase(); list.textContent = '';
+    const shown = rows.filter(r => !f || `${r.title} ${r.last} ${r.cwd}`.toLowerCase().includes(f));
+    $('#resume-note').textContent = shown.length ? '' : (rows.length ? 'NOTHING MATCHES' : 'NO EARLIER CONVERSATIONS');
+    for (const r of shown) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'rs' + (r.open ? ' open' : ''); b.disabled = !!r.open;
+      b.innerHTML = '<b></b><i></i><small></small>';
+      $('b', b).textContent = r.title || '(untitled)'; $('i', b).textContent = `${(r.cwd || '').split('/').filter(Boolean).pop() || '/'} · ${ago(r.mtime_ms)}${r.open ? ' · OPEN NOW' : ''}`;
+      $('small', b).textContent = r.last || '';
+      b.onclick = () => { dlg.close(); const opt = { resume: r.id, cwd: r.cwd }; return where === 'tab' ? newTabWith('claude', opt) : openBeside('claude', opt); };
+      list.appendChild(b);
+    }
+  };
+  q.oninput = draw; draw(); q.focus();
+}
 async function renameSpace(id) {
   const sp = S.spaces.find(s => s.id === (id || S.active)); if (!sp) return;
   const v = await ask('RENAME SPACE', sp.name || spaceName(sp, S.spaces.indexOf(sp)), 'empty restores the automatic name');
@@ -486,6 +524,8 @@ def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
 def('space.prev', 'Previous space', () => stepSpace(-1), 'Spaces');
 def('pane.new_claude', 'New Claude beside this pane', () => openBeside('claude', { cwd: cwdOf(S.focus) }), 'Panes');
 def('pane.new_claude_named', 'New Claude with a session name…', () => newClaudeNamed('pane'), 'Panes');
+def('pane.resume_claude', 'Resume an earlier Claude conversation…', () => resumeClaude('pane'), 'Panes');
+def('tab.resume_claude', 'New tab: resume a Claude conversation…', () => resumeClaude('tab'), 'Tabs');
 def('tab.new_claude_named', 'New tab (Claude, named)…', () => newClaudeNamed('tab'), 'Tabs');
 def('pane.new_shell', 'New shell beside this pane', () => openBeside('shell', { cwd: cwdOf(S.focus) }), 'Panes');
 def('app.auto_open', 'Open helper terminals automatically: turn on or off', () => {
@@ -650,7 +690,7 @@ async function agentsMenu(x, y) {
   const ok = S.agents.filter(a => a.installed), no = S.agents.filter(a => !a.installed), items = [];
   ok.forEach((a, i) => items.push({ label: a.name, key: i < 9 ? String(i + 1) : undefined, fn: () => startAgent(a) }));
   if (no.length) { items.push('-'); no.forEach(a => items.push({ label: `${a.name} · not installed`, dim: true, fn: () => showAgentInfo(a) })); }
-  items.push({ label: 'Claude, with a session name…', fn: () => newClaudeNamed('pane') });
+  items.push({ label: 'Claude, with a session name…', fn: () => newClaudeNamed('pane') }, { label: 'Resume a Claude conversation…', fn: () => resumeClaude('pane') });
   items.push('-', { label: 'Setup and sign-in help…', fn: () => showMenu(x, y, S.agents.map(a => ({ label: a.name + (a.installed ? '' : ' · not installed'), dim: !a.installed, fn: () => showAgentInfo(a) }))) });
   showMenu(x, y, items);
 }
@@ -803,7 +843,7 @@ class Pane {
     this.addr = addr; this.ws = null; this.dead = false; this.ended = false; this.retry = 0;
     this.el = document.createElement('div');
     this.el.className = 'pane'; this.el.dataset.addr = addr;
-    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span><span class="sn" title="Session name: other agents reach this one with hc send"></span>${TRICORDER}<span class="st"></span>
+    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span><span class="sn" title="Session name: other agents reach this one with hc send"></span><span class="st"></span>${TRICORDER}
       <button data-a="split_right" title="Split right">SPLIT R</button><button data-a="split_down" title="Split down">SPLIT D</button>
       <button data-a="zoom" title="Zoom">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
       <button data-a="close" class="close" title="Close pane (ends its terminal)">CLOSE</button></div>
@@ -956,7 +996,7 @@ function renderTabs() {
     const st = topState(leaves(tab.root));
     const b = document.createElement('div');
     b.className = 'tab' + (tab.id === sp.tab ? ' on' : ''); b.dataset.state = st; b.draggable = true;
-    b.innerHTML = '<span class="num"></span><span class="nm"></span>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '') + '<button class="x" title="Close tab">×</button>';
+    b.innerHTML = '<span class="num"></span><span class="nm"></span>' + (['working', 'stuck', 'blocked', 'done'].includes(st) ? stateMark(st) : '') + '<button class="x" title="Close tab">×</button>';
     $('.num', b).textContent = pad2(i + 1);
     $('.nm', b).textContent = tabName(tab, i) + (S.zoomed[tab.id] ? ' Z' : '');
     b.onclick = ev => { if (ev.target.classList.contains('x')) closeTab(tab.id); else selectTab(tab.id); };
@@ -1002,7 +1042,7 @@ function renderSpaces() {
       const st = topState(spaceAddrs(sp)), name = spaceName(sp, i);
       const row = document.createElement('div');
       row.className = 'row sp' + (sp.id === S.active ? ' on' : ''); row.draggable = true;
-      row.innerHTML = '<span class="tile"></span><button class="nm"></button>' + (['working', 'blocked', 'done'].includes(st) ? stateMark(st) : '');
+      row.innerHTML = '<span class="tile"></span><button class="nm"></button>' + (['working', 'stuck', 'blocked', 'done'].includes(st) ? stateMark(st) : '');
       const tile = $('.tile', row); tile.textContent = name[0] || '?'; tile.style.setProperty('--c', SPACE_COLORS[i % SPACE_COLORS.length]);
       $('.nm', row).textContent = name;
       row.onclick = () => selectSpace(sp.id);
@@ -1115,7 +1155,36 @@ function divider(n, i, container, kids) {
   };
   return d;
 }
-function zoomOf(tab) { const a = tab && S.zoomed[tab.id]; return a && leaves(tab.root).includes(a) ? a : null; }
+// On a phone only one pane is shown at a time: the focused one (the strip above it switches, so does a swipe on its title bar)
+const phoneMQ = window.matchMedia('(max-width:820px)');
+function zoomOf(tab) {
+  if (!tab) return null;
+  const ls = leaves(tab.root);
+  if (phoneMQ.matches) return ls.includes(S.focus) ? S.focus : (ls[0] || null);
+  const a = S.zoomed[tab.id]; return a && ls.includes(a) ? a : null;
+}
+function renderStrip(addrs) {
+  const box = $('#pstrip'); box.textContent = ''; box.hidden = !(phoneMQ.matches && addrs.length > 1);
+  if (box.hidden) return;
+  for (const a of addrs) {
+    const t = S.terms.get(a), st = t ? stateOf(t) : 'ended', b = document.createElement('button');
+    b.className = 'ps' + (a === S.focus ? ' on' : ''); b.dataset.state = st; b.style.setProperty('--c', STATUS_COLOR[st]);
+    b.innerHTML = '<span class="d"></span><span class="n"></span>'; $('.n', b).textContent = t ? labelOf(t) : a;
+    b.onclick = () => { S.focus = a; render(); focusPane(a); };
+    box.appendChild(b); if (a === S.focus) requestAnimationFrame(() => b.scrollIntoView({ inline: 'nearest', block: 'nearest' }));
+  }
+}
+function stepPane(dir) {
+  const tab = curTab(), ls = tab ? leaves(tab.root) : []; if (ls.length < 2) return;
+  const i = ls.indexOf(S.focus); S.focus = ls[(i + dir + ls.length) % ls.length]; render(); focusPane(S.focus);
+}
+phoneMQ.addEventListener('change', () => { lastSig = ''; render(); });
+{ let x0 = null, y0 = 0;   // a sideways swipe on a pane's title bar moves to the next or previous pane
+  document.addEventListener('touchstart', e => { x0 = phoneMQ.matches && e.target.closest && e.target.closest('.pane-h') && e.touches.length === 1 ? e.touches[0].clientX : null; y0 = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (x0 === null) return; const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) stepPane(dx < 0 ? 1 : -1);
+  }, { passive: true }); }
 const sigOf = tab => JSON.stringify([tab && tab.id, zoomOf(tab), tab && tab.root]);
 function renderPanes() {
   const tab = curTab(), root = tab ? tab.root : null, addrs = leaves(root), zoom = zoomOf(tab);
@@ -1130,6 +1199,7 @@ function renderPanes() {
       else { const el = buildNode(root); if (isLeaf(root)) el.style.flex = '1 1 0px'; box.appendChild(el); }
     }
   }
+  renderStrip(addrs);
   document.body.classList.toggle('no-panes', addrs.length === 0);
   for (const [a, p] of P) { p.update(); p.el.classList.toggle('focus', a === S.focus); }
   requestAnimationFrame(() => P.forEach(p => p.refit()));
@@ -1267,7 +1337,7 @@ function init() {
   $('#new-shell').onclick = () => startSession('shell');
   $('#tab-add').onclick = ev => {
     const r = ev.currentTarget.getBoundingClientRect();
-    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, { label: 'Claude (named)…', cmd: 'tab.new_claude_named' }, '-', { label: 'New space', cmd: 'space.new' }]);
+    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, { label: 'Claude (named)…', cmd: 'tab.new_claude_named' }, { label: 'Resume Claude…', cmd: 'tab.resume_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
   };
   $('#space-add').onclick = () => run('space.new');
   $('#search-btn').onclick = openPicker;
@@ -1295,6 +1365,10 @@ function init() {
   $('#main').addEventListener('click', () => document.body.classList.remove('side-open'));
   $('#upload-btn').onclick = () => { if (!S.focus) return toast('Focus a terminal first', true); $('#file-input').click(); };
   $('#file-input').onchange = ev => { const p = P.get(S.focus); if (p) p.sendFiles([...ev.target.files]); ev.target.value = ''; };
+  const stuckLbl = () => { const m = stuckMin(); $('#stuck-btn').textContent = m ? `STUCK ${m}M` : 'STUCK OFF'; };
+  $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); };
+  stuckLbl();
+  $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeClaude('pane'); };
   $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
   $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });
   $('#tabs').addEventListener('wheel', ev => { ev.preventDefault(); stepTab(ev.deltaY > 0 || ev.deltaX > 0 ? 1 : -1); }, { passive: false });
@@ -1311,6 +1385,7 @@ function init() {
   $('#help-close').onclick = () => $('#help-dlg').close();
   document.querySelectorAll('dialog button[value=cancel]').forEach(b => { b.type = 'button'; b.onclick = () => b.closest('dialog').close('cancel'); });
   setInterval(renderAgents, 30000);
+  setInterval(stuckTick, 30000);
   setInterval(() => { $('#f-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
   document.addEventListener('paste', ev => {   // an image pasted anywhere goes to the focused terminal
     const files = [...(ev.clipboardData ? ev.clipboardData.files : [])], p = P.get(S.focus);
