@@ -364,6 +364,7 @@ async function renameTab(id) {
   if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
 }
 const SESSION_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const swapping = new Set();   // panes whose terminal is being replaced on purpose: their old terminal ending must not close them
 function replaceAddress(oldAddr, newAddr) {   // the same pane, now backed by a new terminal
   const re = a => a === oldAddr ? newAddr : a;
   const walk = n => !n ? n : isLeaf(n) ? { ...n, a: re(n.a) } : { ...n, c: n.c.map(walk) };
@@ -383,7 +384,8 @@ async function renameTerminal(addr) {
       else if (confirm(`Make "${name}" this session's name too, so other agents can reach it with: hc send ${name}\n\n` +
           `OK: restart this Claude under that name. The same conversation resumes` + (stateOf(t) === 'working' ? ', but the answer it is working on right now is lost' : '') + `.\n` +
           `Cancel: only change the pane label (other agents cannot find it by that name).`)) {
-        const r = await post('/api/terminals/session-name', { terminal: addr, name });
+        swapping.add(addr);
+        let r; try { r = await post('/api/terminals/session-name', { terminal: addr, name }); } finally { setTimeout(() => swapping.delete(addr), 5000); }
         if (r.address && r.address !== addr) { replaceAddress(addr, r.address); commit(); focusPane(r.address); }
         if (r.failed) { toast(r.failed, true); return; }
         if (r.restarted) { toast(`SESSION NAMED ${name.toUpperCase()}`); return; }
@@ -887,7 +889,7 @@ class Pane {
           this.ended = true; const r = m.reason || {};
           this.term.write('\r\n\x1b[38;5;208m[ terminal ended ]\x1b[0m\r\n');
           // A clean exit or an end-it-yourself closes the pane; a crash stays so its last output can be read.
-          if (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code)) setTimeout(() => dropFromTree(this.addr), 600);
+          if (!swapping.has(this.addr) && (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code))) setTimeout(() => dropFromTree(this.addr), 600);
         } else if (m.type === 'error') { this.term.write(`\r\n\x1b[31m[ ${m.error} ]\x1b[0m\r\n`); this.ended = true; }
         return;
       }
