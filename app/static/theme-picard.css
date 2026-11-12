@@ -149,7 +149,7 @@ html[data-theme=picard] .hnote,html[data-theme=picard] .dim,html[data-theme=pica
 html[data-theme=picard] .pal-item{border-radius:0;color:var(--tan)}
 html[data-theme=picard] .pal-item.sel,html[data-theme=picard] .pal-item:hover{background:color-mix(in srgb,var(--orange) 20%,var(--pbg));color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
 html[data-theme=picard] #pal-dlg,html[data-theme=picard] #pick-dlg{border-radius:0}
-html[data-theme=picard] .ctx{background:rgba(7,13,20,.96);border:1px solid var(--orange);border-radius:0;box-shadow:var(--glow),0 8px 30px #000c;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)}
+html[data-theme=picard] .ctx{background:#070d14;border:1px solid var(--orange);border-radius:0;box-shadow:var(--glow),0 8px 30px #000c;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)}
 html[data-theme=picard] .ctx .it{border-radius:0;color:var(--tan)}
 html[data-theme=picard] .ctx .it.sel,html[data-theme=picard] .ctx .it:hover{background:color-mix(in srgb,var(--orange) 20%,var(--pbg));color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
 html[data-theme=picard] .ctx .it.chk.sel::after,html[data-theme=picard] .ctx .it.chk:hover::after{color:var(--orange)}
