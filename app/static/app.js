@@ -320,12 +320,12 @@ function movePane(src, target, zone) {   // drop on an edge to place beside, on 
   }
   S.zoomed[tab.id] = null; S.focus = src; commit(); focusPane(src);
 }
-async function splitPane(addr, dir, kind = 'shell') {
+async function splitPane(addr, dir, kind = 'shell', extra = {}) {
   addr = addr || S.focus;
   const loc = addr && locate(addr);
-  if (!loc) return newTabWith(kind, { cwd: cwdOf(S.focus) });
+  if (!loc) return newTabWith(kind, { cwd: cwdOf(S.focus), ...extra });
   try {
-    const na = await createTerminal(kind, { cwd: cwdOf(addr), machine: machineOf(addr) });
+    const na = await createTerminal(kind, { cwd: cwdOf(addr), machine: machineOf(addr), ...extra });
     loc.tab.root = insertBeside(loc.tab.root, addr, dir === 'right' ? 'row' : 'col', na);
     S.zoomed[loc.tab.id] = null; S.focus = na; commit(); focusPane(na);
   } catch (e) { toast(e.message, true); }
@@ -394,11 +394,19 @@ async function renameTerminal(addr) {
     const r = await post('/api/terminals/title', { terminal: addr, title: v }); S.terms.set(addr, { ...t, labels: r.labels || t.labels }); render();
   } catch (e) { toast(e.message, true); }
 }
-async function newClaudeNamed(where) {
-  const v = await ask('NAME THIS CLAUDE SESSION', '', 'letters, numbers, - and _ ; this is the name for hc send');
-  if (v === null) return;
+async function askSessionName() {   // null: cancelled; '': no name; otherwise a valid session name
+  const v = await ask('NAME THIS CLAUDE SESSION', '', 'optional: letters, numbers, - and _ ; this is the name for hc send');
+  if (v === null) return null;
   const name = v.toLowerCase();
-  if (name && !SESSION_NAME.test(name)) return toast('A session name can use letters, numbers, - and _ (up to 32, no spaces)', true);
+  if (name && !SESSION_NAME.test(name)) { toast('A session name can use letters, numbers, - and _ (up to 32, no spaces)', true); return null; }
+  return name;
+}
+async function splitClaude(addr, dir) {   // split with Claude, asking for a session name first (empty: an ordinary unnamed Claude)
+  const name = await askSessionName(); if (name === null) return;
+  return splitPane(addr, dir, 'claude', name ? { name } : {});
+}
+async function newClaudeNamed(where) {
+  const name = await askSessionName(); if (name === null) return;
   const opt = { cwd: cwdOf(S.focus), ...(name ? { name } : {}) };
   return where === 'tab' ? newTabWith('claude', opt) : openBeside('claude', opt);
 }
@@ -492,8 +500,8 @@ def('tab.next', 'Next tab', () => stepTab(1), 'Tabs');
 def('tab.prev', 'Previous tab', () => stepTab(-1), 'Tabs');
 def('pane.split_right', 'Split right', a => splitPane(typeof a === 'string' ? a : undefined, 'right'), 'Panes');
 def('pane.split_down', 'Split down', a => splitPane(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
-def('pane.split_right_claude', 'Split right with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'right', 'claude'), 'Panes');
-def('pane.split_down_claude', 'Split down with Claude', a => splitPane(typeof a === 'string' ? a : undefined, 'down', 'claude'), 'Panes');
+def('pane.split_right_claude', 'Split right with Claude', a => splitClaude(typeof a === 'string' ? a : undefined, 'right'), 'Panes');
+def('pane.split_down_claude', 'Split down with Claude', a => splitClaude(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
 def('pane.rename', 'Rename pane', a => renameTerminal(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.zoom', 'Zoom pane or show all panes', a => toggleZoom(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.close', 'Close pane (ends its terminal)', a => closePane(typeof a === 'string' ? a : undefined), 'Panes');
