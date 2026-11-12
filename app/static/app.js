@@ -746,7 +746,12 @@ const XTERM_PICARD = {
   black: '#02050a', red: '#ff5d5d', green: '#7fe0a8', yellow: '#f2c14a', blue: '#5a8cff', magenta: '#b88cff', cyan: '#5ad2f4', white: '#d6e4ee',
   brightBlack: '#5b6f82', brightRed: '#ff8080', brightGreen: '#a0f0c0', brightYellow: '#ffd978', brightBlue: '#88aaff', brightMagenta: '#cfaaff', brightCyan: '#8fe4fa', brightWhite: '#ffffff',
 };
-const xtermTheme = () => document.documentElement.dataset.theme === 'picard' ? XTERM_PICARD : XTERM_THEME;
+const XTERM_TITAN = {
+  background: '#000000', foreground: '#cfd8e6', cursor: '#5fc3e8', cursorAccent: '#000000', selectionBackground: '#446075bb',
+  black: '#000000', red: '#ff6f5e', green: '#7fd6a8', yellow: '#e3b072', blue: '#6fa3ff', magenta: '#b79ad0', cyan: '#5fc3e8', white: '#cfd8e6',
+  brightBlack: '#647791', brightRed: '#ff9084', brightGreen: '#a3ecc4', brightYellow: '#f2c791', brightBlue: '#9bc0ff', brightMagenta: '#d0b8e6', brightCyan: '#97c8e2', brightWhite: '#ffffff',
+};
+const xtermTheme = () => ({ picard: XTERM_PICARD, titan: XTERM_TITAN })[document.documentElement.dataset.theme] || XTERM_THEME;
 window.addEventListener('lcars-theme', () => { for (const p of P.values()) { try { p.term.options.theme = xtermTheme(); } catch {} } });
 const hasFiles = ev => ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes('Files');
 

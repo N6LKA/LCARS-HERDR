@@ -1,8 +1,8 @@
 // Look of the interface: TNG era (the original) or Picard era. The choice is kept in this browser (so the page paints
 // the right look at once) and in the signed-in account (so every device follows it).
 (() => {
-  const KEY = 'lcars-theme', VALID = ['tng', 'picard'];
-  const cur = () => document.documentElement.dataset.theme === 'picard' ? 'picard' : 'tng';
+  const KEY = 'lcars-theme', VALID = ['tng', 'picard', 'titan'], BAR = { tng: '#000000', picard: '#03060a', titan: '#05070b' };
+  const cur = () => VALID.includes(document.documentElement.dataset.theme) ? document.documentElement.dataset.theme : 'tng';
   function mark() {
     document.querySelectorAll('#sec-themes button').forEach(b => {
       const on = b.dataset.theme === cur(); b.setAttribute('aria-pressed', on);
@@ -11,9 +11,9 @@
   }
   function apply(t) {
     if (!VALID.includes(t)) return;
-    if (t === 'picard') document.documentElement.dataset.theme = 'picard'; else delete document.documentElement.dataset.theme;
+    if (t !== 'tng') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
     try { localStorage.setItem(KEY, t); } catch {}
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', t === 'picard' ? '#03060a' : '#000000');
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', BAR[t]);
     window.dispatchEvent(new CustomEvent('lcars-theme', { detail: t }));
     mark();
   }

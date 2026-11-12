@@ -15,9 +15,10 @@
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="icon" href="/static/favicon.png">
 <link rel="stylesheet" href="/static/vendor/xterm.css">
-<script>try{if(localStorage.getItem("lcars-theme")==="picard")document.documentElement.dataset.theme="picard"}catch(e){}</script>
+<script>try{(function(){var k=localStorage.getItem("lcars-theme");if(k==="picard"||k==="titan")document.documentElement.dataset.theme=k})()}catch(e){}</script>
 <link rel="stylesheet" href="/static/lcars.css">
 <link rel="stylesheet" href="/static/theme-picard.css">
+<link rel="stylesheet" href="/static/theme-titan.css">
 </head>
 <body>
 <div id="app">
@@ -125,7 +126,7 @@
     <div class="sec-head"><h3 id="sec-title">SETTINGS</h3><button type="button" class="pill red" id="sec-out">SIGN OUT</button></div>
     <section><h4>APPEARANCE</h4>
       <p class="dim">How LCARS looks. Saved to your account, so every device you sign in on follows it.</p>
-      <div class="row" id="sec-themes"><button type="button" class="pill orange" data-theme="tng">TNG ERA</button><button type="button" class="pill sky" data-theme="picard">PICARD ERA</button></div>
+      <div class="row" id="sec-themes"><button type="button" class="pill orange" data-theme="tng">TNG ERA</button><button type="button" class="pill sky" data-theme="picard">PICARD ERA</button><button type="button" class="pill lilac" data-theme="titan">TITAN DS</button></div>
       <p class="dim" id="sec-theme-msg"></p></section>
     <section><h4>ACCOUNT</h4>
       <p class="dim" id="sec-who"></p>

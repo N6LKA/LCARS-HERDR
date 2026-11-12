@@ -1,0 +1,168 @@
+/* TITAN DS look. Applies only when <html data-theme="titan">. Colours and shapes follow the Titan DS Star Trek live wallpaper
+   (screenshot supplied by Larry): slate-steel frames around black inset screens, icy blue and cyan readouts, peach and coral
+   tags, small numeric-looking chips. Same markup, same layout, same behaviour as the other looks: only the styling differs. */
+html[data-theme=titan]{
+  --steel:#52596e;--steel-d:#2f3749;--steel-dd:#232a3a;--steel-l:#647791;
+  --ice:#97c8e2;--blue:#7396b2;--cyan:#5fc3e8;--teal:#446075;--navy:#1b2d3d;
+  --coral:#ff6f5e;--brick:#9a4940;--mauve:#a78f98;--peach:#f0935f;--ink:#05070b;--txt:#cfd8e6;--txt2:#8a96ad;
+  /* the shared variables the rest of the app uses */
+  --orange:var(--blue);--tan:var(--txt);--lilac:#8f9ab8;--violet:var(--steel-l);--sky:var(--ice);--gold:#d9a05b;--red:var(--coral);--gray:var(--steel);
+  --tabdim:var(--steel-d);--hdr:var(--steel-dd);--hdrtext:var(--txt2);
+  --s-working:var(--peach);--s-blocked:var(--coral);--s-done:var(--ice);--s-idle:var(--blue);--s-live:var(--steel-l);--s-ended:#3a4256;
+  --scr:#000;--rad:16px;
+}
+html[data-theme=titan],html[data-theme=titan] body{background:#000;color:var(--txt);letter-spacing:.07em}
+html[data-theme=titan] body{padding:8px;box-sizing:border-box}
+html[data-theme=titan] body.wco{padding:0}
+html[data-theme=titan] ::-webkit-scrollbar{width:9px;height:9px}
+html[data-theme=titan] ::-webkit-scrollbar-thumb{background:var(--steel);border-radius:5px}
+html[data-theme=titan] ::-webkit-scrollbar-track{background:transparent}
+
+/* the whole console is one slate frame around black screens */
+html[data-theme=titan] #app{height:calc(100dvh - 16px);background:linear-gradient(180deg,#303850 0,#262d3f 100%);border-radius:30px;padding:10px;gap:8px;box-shadow:inset 0 0 0 2px #3b4560}
+html[data-theme=titan] body.wco #app{height:100dvh;border-radius:0}
+
+html[data-theme=titan] #elbow{background:var(--steel);border-radius:34px 0 0 0;color:var(--ink)}
+html[data-theme=titan] #elbow::before{background:var(--steel)}
+html[data-theme=titan] #elbow::after{background:radial-gradient(circle at 100% 100%,transparent calc(var(--bend) - .5px),var(--steel) var(--bend))}
+html[data-theme=titan] #brand{color:#e8eef6;font-weight:400;letter-spacing:.3em}
+html[data-theme=titan] .ico{color:#e8eef6}
+html[data-theme=titan] .ico:hover{background:#ffffff22}
+
+/* buttons: flat rounded tags in the wallpaper's palette */
+html[data-theme=titan] .pill,html[data-theme=titan] #tab-add,html[data-theme=titan] #menu-btn,html[data-theme=titan] #side-show{border-radius:9px;color:var(--ink);font-weight:400}
+html[data-theme=titan] .pill:hover{filter:brightness(1.12)}
+html[data-theme=titan] .pill.orange{background:var(--blue)}html[data-theme=titan] #tab-add,html[data-theme=titan] #menu-btn{background:var(--blue)}
+html[data-theme=titan] .pill.peach{background:var(--peach)}
+html[data-theme=titan] .pill.tan{background:var(--mauve)}
+html[data-theme=titan] .pill.lilac{background:#8f9ab8}
+html[data-theme=titan] .pill.violet{background:var(--steel-l);color:#eef3fa}
+html[data-theme=titan] .pill.sky{background:var(--ice)}
+html[data-theme=titan] .pill.gold{background:#d9a05b}
+html[data-theme=titan] .pill.gray{background:var(--steel);color:#dfe6f0}
+html[data-theme=titan] .pill.red,html[data-theme=titan] #btn-logout{background:var(--brick);color:#ffe9e5}
+html[data-theme=titan] #side-show{background:var(--blue);border-radius:12px 0 0 12px}
+html[data-theme=titan] #top{gap:6px}
+html[data-theme=titan] .tbtn{background:var(--teal);color:#e8f3fa;font-weight:400;border-radius:9px;padding:0 15px}
+html[data-theme=titan] .tbtn:hover{filter:brightness(1.18)}
+html[data-theme=titan] .tbtn.on{background:var(--ice);color:var(--ink)}
+html[data-theme=titan] #top-info{background:var(--navy);color:var(--cyan);border-radius:9px;font-weight:400;letter-spacing:.22em}
+html[data-theme=titan] #top-cap{background:var(--steel);border-radius:0 24px 0 0}
+html[data-theme=titan] #topbar-fill{color:var(--txt);gap:6px}
+
+html[data-theme=titan] .tab{background:var(--steel-d);color:var(--txt);border-radius:12px;font-weight:400;box-shadow:inset 0 0 0 1px #3d4864}
+html[data-theme=titan] .tab .num{color:var(--txt2);opacity:1}
+html[data-theme=titan] .tab.on{background:var(--blue);color:var(--ink);box-shadow:none}
+html[data-theme=titan] .tab.on .num{color:#1c2c3a}
+html[data-theme=titan] .tab[data-state=blocked]{background:var(--coral);color:var(--ink)}
+html[data-theme=titan] .tab .x{color:var(--ink)}
+
+/* sidebar: slate rail with the black screens beside it */
+html[data-theme=titan] .rail{background:var(--c);color:var(--ink);border-radius:14px 0 0 14px;font-weight:400}
+html[data-theme=titan] .r-peach{--c:var(--steel)}html[data-theme=titan] .r-lilac{--c:var(--steel-l)}html[data-theme=titan] .r-gold{--c:var(--teal)}
+html[data-theme=titan] .rail{color:#e8eef6}
+html[data-theme=titan] .rail-title{color:var(--ice);font-weight:400;letter-spacing:.24em}
+html[data-theme=titan] #blk-agents .rail-title{color:var(--ice)}
+html[data-theme=titan] .rail-add{background:var(--blue);border-radius:9px;color:var(--ink)}
+html[data-theme=titan] .rail-ico{color:var(--ice)}
+html[data-theme=titan] .mrow .cap{background:var(--mauve);border-radius:10px 0 0 10px}
+html[data-theme=titan] .mrow .bar{background:var(--steel-d);color:var(--txt);border-radius:0 10px 10px 0;box-shadow:inset 0 0 0 1px #3d4864}
+html[data-theme=titan] .mrow .mn{font-weight:400}
+html[data-theme=titan] .mrow .st{border-color:var(--steel-d)}
+html[data-theme=titan] .row .tile{background:var(--steel);color:#e8eef6;font-weight:400;border-radius:10px 0 0 10px}
+html[data-theme=titan] .row .nm{background:var(--scr);color:var(--txt);border-radius:0 10px 10px 0;box-shadow:inset 0 0 0 1px #2d3549}
+html[data-theme=titan] .row .nm small{color:var(--txt2)}
+html[data-theme=titan] .row:hover .nm{box-shadow:inset 0 0 0 1px var(--blue)}
+html[data-theme=titan] .row.on .nm{background:var(--blue);color:var(--ink);box-shadow:none}
+html[data-theme=titan] .row .mk,html[data-theme=titan] .tri{background:var(--scr)}
+html[data-theme=titan] .row .kill{background:var(--steel-d);color:var(--coral);border-radius:0 10px 10px 0}
+html[data-theme=titan] .grp{font-weight:400;letter-spacing:.2em}
+html[data-theme=titan] .agent .blk{color:var(--ink);font-weight:400;border-radius:10px 0 0 10px}
+html[data-theme=titan] .agent .nm{color:var(--txt);border-radius:0}
+html[data-theme=titan] .agent.in .nm{background:var(--steel-dd);color:#fff}
+html[data-theme=titan] .agent.here .nm{background:var(--ice);color:var(--ink)}
+html[data-theme=titan] .agent.here .nm small{color:#2a3a4a}
+html[data-theme=titan] .term .dot{border-radius:10px 0 0 10px}
+html[data-theme=titan] .foot .pill{border-radius:9px;text-align:left;padding-left:14px}
+html[data-theme=titan] .machine .cap{background:var(--mauve);border-radius:9px 0 0 9px}
+html[data-theme=titan] .machine .bar{background:var(--steel-d);color:var(--txt);border-radius:0 9px 9px 0;font-weight:400}
+
+/* panes: black screens inside the frame */
+html[data-theme=titan] .pane{background:var(--scr);border:2px solid #39435a;border-radius:var(--rad)}
+html[data-theme=titan] .pane.focus{border-color:var(--blue);box-shadow:0 0 0 1px #7396b244,0 0 18px #5fc3e826}
+html[data-theme=titan] .pane.blocked{border-color:var(--coral)}
+html[data-theme=titan] .pane-h{background:var(--steel-dd);height:30px;gap:6px;padding-right:6px}
+html[data-theme=titan] .pane-h .cap{width:16px;background:var(--c,var(--s-live));border-radius:0}
+html[data-theme=titan] .pane-h .title{background:none;color:var(--txt2);font-weight:400;letter-spacing:.16em}
+html[data-theme=titan] .pane.focus .pane-h .title{background:none;color:var(--cyan)}
+html[data-theme=titan] .pane.blocked .pane-h .title{background:none;color:var(--coral)}
+html[data-theme=titan] .pane.focus .pane-h .title,html[data-theme=titan] .pane.blocked .pane-h .title{color:inherit}
+html[data-theme=titan] .pane.focus .pane-h .title{color:var(--cyan)}html[data-theme=titan] .pane.blocked .pane-h .title{color:var(--coral)}
+html[data-theme=titan] .pane-h .st{background:var(--c,var(--s-live));color:var(--ink);border-radius:8px;font-weight:400;height:20px;line-height:20px}
+html[data-theme=titan] .pane-h button{background:var(--steel);color:#e8eef6;border-radius:7px;height:20px;line-height:20px;font-weight:400;padding:0 9px}
+html[data-theme=titan] .pane.focus .pane-h button{background:var(--teal);color:#e8f3fa}
+html[data-theme=titan] .pane-h button:hover{filter:brightness(1.2)}
+html[data-theme=titan] .pane-h .close,html[data-theme=titan] .pane.focus .pane-h .close,html[data-theme=titan] .pane.blocked .pane-h .close{background:var(--brick);color:#ffe9e5;border-radius:7px}
+html[data-theme=titan] .pane-b,html[data-theme=titan] .pane-b .xterm-viewport{background:var(--scr)!important}
+html[data-theme=titan] .pane-msg{background:var(--coral);border-radius:8px;color:var(--ink)}
+html[data-theme=titan] .divider::after{background:#39435a}
+html[data-theme=titan] .divider:hover::after,html[data-theme=titan] .divider.active::after,html[data-theme=titan] #sdiv:hover::after,html[data-theme=titan] #sdiv.active::after,html[data-theme=titan] #pdiv:hover::after,html[data-theme=titan] #pdiv.active::after{background:var(--blue)}
+html[data-theme=titan] #empty{color:var(--cyan)}
+html[data-theme=titan] #empty h2{font-weight:400;letter-spacing:.3em}
+html[data-theme=titan] #empty p{color:var(--txt2)}
+html[data-theme=titan] .pane.drop::after{background:#7396b233;border-color:var(--blue);color:var(--ice);font-weight:400;border-radius:12px}
+html[data-theme=titan] .dropzone{background:#7396b233;border-color:var(--blue);border-radius:12px}
+html[data-theme=titan] .tri i,html[data-theme=titan] .mk i{border-radius:1px}
+
+/* status strip: slate chips, a steel foot block mirroring the elbow */
+html[data-theme=titan] #foot{font-weight:400;letter-spacing:.14em;gap:6px}
+html[data-theme=titan] .chip{background:var(--c);color:var(--ink);border-radius:9px}
+html[data-theme=titan] .chip.gold{--c:var(--teal);color:#e8f3fa}
+html[data-theme=titan] .chip.violet{--c:var(--steel-d);color:var(--cyan)}
+html[data-theme=titan] .chip.lilac{--c:var(--steel);color:#e8eef6}
+html[data-theme=titan] .chip.sky{--c:var(--ice)}
+html[data-theme=titan] .chip.orange{--c:var(--peach)}
+html[data-theme=titan] .chip.fill{background:var(--steel-dd)}
+html[data-theme=titan] #f-core{background:var(--steel);color:#e8eef6;border-radius:0 0 0 30px}
+html[data-theme=titan] #f-core::before{background:var(--steel)}
+html[data-theme=titan] #f-core::after{background:radial-gradient(circle at 100% 0,transparent calc(var(--bend) - .5px),var(--steel) var(--bend))}
+html[data-theme=titan] #f-hint{border-radius:9px}
+html[data-theme=titan] #f-agents.warn,html[data-theme=titan] #conn.bad{--c:var(--coral);color:var(--ink)}
+
+/* dialogs, menus, palette: a slate frame around a black screen */
+html[data-theme=titan] dialog{background:var(--scr);color:var(--txt);border:4px solid var(--steel);border-radius:22px;box-shadow:0 0 0 2px #232a3a,0 24px 70px #000d}
+html[data-theme=titan] dialog::backdrop{background:#000b}
+html[data-theme=titan] #sec-back{background:#000b}
+html[data-theme=titan] dialog h3{color:var(--ice);font-weight:400;letter-spacing:.28em}
+html[data-theme=titan] dialog label{color:var(--peach)}
+html[data-theme=titan] dialog input,html[data-theme=titan] #c-msg{background:var(--steel-dd);color:var(--txt);border-radius:10px;border:1px solid #3d4864}
+html[data-theme=titan] dialog input:focus,html[data-theme=titan] #c-msg:focus{outline:0;border-color:var(--blue)}
+html[data-theme=titan] #sec-dlg section{border-top:1px solid #39435a}
+html[data-theme=titan] #sec-dlg h4,html[data-theme=titan] #help-body h4,html[data-theme=titan] #info-body h4{color:var(--ice);font-weight:400;letter-spacing:.24em}
+html[data-theme=titan] .urow,html[data-theme=titan] .icode,html[data-theme=titan] #sec-rc{background:var(--steel-dd);border-radius:10px;border:1px solid #39435a}
+html[data-theme=titan] .icode code,html[data-theme=titan] #sec-rc,html[data-theme=titan] .hrow kbd{color:var(--cyan)}
+html[data-theme=titan] .hrow:hover{background:var(--steel-dd)}html[data-theme=titan] .hrow.alt{background:#0b0e14}
+html[data-theme=titan] .hnote,html[data-theme=titan] .dim,html[data-theme=titan] .pmsg.dim{color:var(--txt2)}
+html[data-theme=titan] .pal-item{color:var(--txt);border-radius:10px}
+html[data-theme=titan] .pal-item.sel,html[data-theme=titan] .pal-item:hover{background:var(--blue);color:var(--ink)}
+html[data-theme=titan] .ctx{background:#07090d;border:3px solid var(--steel);border-radius:16px;box-shadow:0 10px 34px #000d}
+html[data-theme=titan] .ctx .it{color:var(--txt);border-radius:9px}
+html[data-theme=titan] .ctx .it.sel,html[data-theme=titan] .ctx .it:hover{background:var(--blue);color:var(--ink)}
+html[data-theme=titan] .ctx .it.chk::after{color:var(--cyan)}
+html[data-theme=titan] .ctx hr{border-top-color:#39435a}
+html[data-theme=titan] #toast{background:var(--ice);color:var(--ink);font-weight:400;border-radius:12px}
+html[data-theme=titan] #toast.err{background:var(--coral)}
+html[data-theme=titan] #keybar button{background:var(--steel);color:#e8eef6;border-radius:9px}
+
+/* Files and Changes panel */
+html[data-theme=titan] #panel{background:var(--scr);border:2px solid #39435a;border-radius:var(--rad)}
+html[data-theme=titan] #p-head{background:var(--steel-dd)}
+html[data-theme=titan] #p-title{color:var(--cyan);font-weight:400;letter-spacing:.26em}
+html[data-theme=titan] .frow:hover{background:var(--steel-dd)}html[data-theme=titan] .frow.sel{background:var(--navy)}
+html[data-theme=titan] .frow .ico{color:var(--ice)}
+html[data-theme=titan] .vbar,html[data-theme=titan] .chead,html[data-theme=titan] #p-foot{background:var(--steel-dd)}
+html[data-theme=titan] .dl .t{color:var(--txt)}html[data-theme=titan] .dl.hunk{background:var(--navy)}
+html[data-theme=titan] .chead .cnt{background:var(--blue);color:var(--ink);border-radius:8px}
+html[data-theme=titan] .chead .br{color:var(--cyan)}
+html[data-theme=titan] .clist{border-bottom-color:#39435a}
+html[data-theme=titan] .pill.small{border-radius:8px}

@@ -97,11 +97,11 @@ function size(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeig
 function paint(){cx.clearRect(0,0,W,H);for(const s of S){const a=s.a*(.55+Math.sin(s.p)*.45);cx.fillStyle=s.b?`rgba(160,210,255,${a.toFixed(2)})`:`rgba(215,225,255,${a.toFixed(2)})`;cx.beginPath();cx.arc(s.x*W,s.y*H,s.r,0,6.283);cx.fill()}}
 let last=0;function tick(t){if(t-last>33){last=t;for(const s of S){s.p+=s.sp;s.x+=s.dx;s.y+=s.dy;if(s.x<0)s.x=1;if(s.x>1)s.x=0;if(s.y<0)s.y=1;if(s.y>1)s.y=0}paint()}requestAnimationFrame(tick)}
 addEventListener('resize',size);size();if(!still)requestAnimationFrame(tick)})()</script>"""
-STARFIELD_CSS = "html[data-theme=picard] input{border-radius:0;border-bottom:1px solid #1c2d3d}html[data-theme=picard] button{border-radius:0;color:#02121a;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)}html[data-theme=picard] h1{font-weight:400;letter-spacing:.34em}html[data-theme=picard] body{background:radial-gradient(ellipse at 20% 0,#0d2233 0,#03060a 60%)}#stars{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}main{position:relative;z-index:1}"
+STARFIELD_CSS = "html[data-theme=titan] input{border-radius:10px;background:#2f3749;color:#dfe6f0}html[data-theme=titan] button{border-radius:10px;color:#05070b}html[data-theme=titan] h1{font-weight:400;letter-spacing:.3em;color:#cfd8e6}html[data-theme=titan] #m{color:#ff6f5e}html[data-theme=titan] a{color:#97c8e2}html[data-theme=titan] body{background:radial-gradient(ellipse at 50% 0,#1b2438 0,#05070b 62%)}html[data-theme=picard] input{border-radius:0;border-bottom:1px solid #1c2d3d}html[data-theme=picard] button{border-radius:0;color:#02121a;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)}html[data-theme=picard] h1{font-weight:400;letter-spacing:.34em}html[data-theme=picard] body{background:radial-gradient(ellipse at 20% 0,#0d2233 0,#03060a 60%)}#stars{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}main{position:relative;z-index:1}"
 
-LOGIN_PAGE = """<!doctype html><meta charset=utf-8><script>try{if(localStorage.getItem("lcars-theme")==="picard")document.documentElement.dataset.theme="picard"}catch(e){}</script><meta name=viewport content="width=device-width,initial-scale=1">
+LOGIN_PAGE = """<!doctype html><meta charset=utf-8><script>try{(function(){var k=localStorage.getItem("lcars-theme");if(k==="picard"||k==="titan")document.documentElement.dataset.theme=k})()}catch(e){}</script><meta name=viewport content="width=device-width,initial-scale=1">
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
-:root{color-scheme:dark;--a:#ff9900}html[data-theme=picard]{--a:#5ad2f4}
+:root{color-scheme:dark;--a:#ff9900}html[data-theme=picard]{--a:#5ad2f4}html[data-theme=titan]{--a:#7aa9c9}
 body{background:#000;color:var(--a);font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px 0;box-sizing:border-box}
 main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,90vw)}#logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:var(--a);color:#000}
@@ -169,9 +169,9 @@ async def login_start(body: StartBody, request: Request):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
 
 
-CODE_PAGE = """<!doctype html><meta charset=utf-8><script>try{if(localStorage.getItem("lcars-theme")==="picard")document.documentElement.dataset.theme="picard"}catch(e){}</script><meta name=viewport content="width=device-width,initial-scale=1">
+CODE_PAGE = """<!doctype html><meta charset=utf-8><script>try{(function(){var k=localStorage.getItem("lcars-theme");if(k==="picard"||k==="titan")document.documentElement.dataset.theme=k})()}catch(e){}</script><meta name=viewport content="width=device-width,initial-scale=1">
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
-:root{color-scheme:dark;--a:#ff9900}html[data-theme=picard]{--a:#5ad2f4}
+:root{color-scheme:dark;--a:#ff9900}html[data-theme=picard]{--a:#5ad2f4}html[data-theme=titan]{--a:#7aa9c9}
 body{background:#000;color:var(--a);font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px 0;box-sizing:border-box}
 main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
 #logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}
