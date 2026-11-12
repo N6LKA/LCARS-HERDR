@@ -60,7 +60,20 @@
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#sec-dlg').open) shut(); });
     $('#sec-pwform').addEventListener('submit', ev => { ev.preventDefault(); changePw(); });
     $('#sec-2faform').addEventListener('submit', ev => { ev.preventDefault(); twoFa(); });
-    $('#sec-copy').onclick = async () => { try { await navigator.clipboard.writeText($('#sec-secret').textContent); say('#sec-2fa-msg', 'Copied.'); } catch { say('#sec-2fa-msg', 'Copy needs https. Select the key and copy it by hand.', true); } };
+    $('#sec-copy').onclick = async () => {
+      const text = $('#sec-secret').textContent, btn = $('#sec-copy'), was = btn.textContent;
+      let done = false;
+      try { await navigator.clipboard.writeText(text); done = true; } catch {}
+      if (!done) {   // plain http (no clipboard API): copy through a temporary text box
+        const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+        $('#sec-dlg').appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+        try { done = document.execCommand('copy'); } catch {}
+        ta.remove();
+      }
+      if (!done) { const r = document.createRange(); r.selectNodeContents($('#sec-secret')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }   // last resort: leave it selected
+      btn.textContent = done ? 'COPIED' : 'SELECTED: PRESS COPY';
+      setTimeout(() => { btn.textContent = was; }, 2500);
+    };
     $('#sec-others').onclick = async () => { try { await api('/api/auth/logout-others', {}); refresh(); } catch (e) { say('#sec-2fa-msg', e.message, true); } };
     $('#sec-out').onclick = async () => { try { await api('/api/auth/logout', {}); } catch {} location.href = '/login'; };
   });
