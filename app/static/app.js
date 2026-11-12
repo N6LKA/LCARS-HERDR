@@ -384,7 +384,9 @@ async function renameTerminal(addr) {
           `OK: restart this Claude under that name. The same conversation resumes` + (stateOf(t) === 'working' ? ', but the answer it is working on right now is lost' : '') + `.\n` +
           `Cancel: only change the pane label (other agents cannot find it by that name).`)) {
         const r = await post('/api/terminals/session-name', { terminal: addr, name });
-        if (r.restarted) { replaceAddress(addr, r.address); commit(); focusPane(r.address); toast(`SESSION NAMED ${name.toUpperCase()}`); return; }
+        if (r.address && r.address !== addr) { replaceAddress(addr, r.address); commit(); focusPane(r.address); }
+        if (r.failed) { toast(r.failed, true); return; }
+        if (r.restarted) { toast(`SESSION NAMED ${name.toUpperCase()}`); return; }
       }
     }
     const r = await post('/api/terminals/title', { terminal: addr, title: v }); S.terms.set(addr, { ...t, labels: r.labels || t.labels }); render();

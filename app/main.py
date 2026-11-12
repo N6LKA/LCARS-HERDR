@@ -519,18 +519,37 @@ async def set_session_name(body: SessionNameBody):
         "size": {"cols": info.get("cols") or 120, "rows": info.get("rows") or 32},
         **({"cwd": info["cwd"]} if info.get("cwd") else {}),
     }
+    # a Claude that has not been talked to yet has no saved conversation to resume: start it fresh, nothing is lost
+    has_history = any(CLAUDE_DIR.glob(f"projects/*/{sid}.jsonl"))
+    resume = ["--resume", sid] if has_history else []
+
+    async def alive(addr: str) -> bool:
+        await asyncio.sleep(2)
+        try:
+            return (await rpc("terminal.get", {"terminal": addr})).get("state") == "live"
+        except HTTPException:
+            return False
+
     await rpc("terminal.kill", {"terminal": info["address"]})
+    new = None
     try:
-        new = await rpc("terminal.run", {**base, "name": name, "argv": [CLAUDE_CMD, "--resume", sid, "--name", name]})
+        new = await rpc("terminal.run", {**base, "name": name, "argv": [CLAUDE_CMD, *resume, "--name", name]})
     except HTTPException:
-        # put it back as it was, so a failed rename does not lose the conversation
-        await rpc("terminal.run", {**base, "argv": [CLAUDE_CMD, "--resume", sid]})
-        raise
+        pass
+    if not new or not await alive(new["address"]):
+        # it did not stay up: put the Claude back as it was, so a failed rename does not lose the conversation
+        if new:
+            try:
+                await rpc("terminal.rm", {"terminal": new["address"]})
+            except HTTPException:
+                pass
+        back = await rpc("terminal.run", {**base, "argv": [CLAUDE_CMD, *resume]})
+        return {"address": back["address"], "old": info["address"], "restarted": False, "failed": "could not restart under that name; Claude was put back as it was"}
     try:
         await rpc("terminal.rm", {"terminal": info["address"]})
     except HTTPException:
         pass
-    return {"address": new["address"], "old": info["address"], "restarted": True}
+    return {"address": new["address"], "old": info["address"], "restarted": True, "resumed": has_history}
 
 
 @app.post("/api/terminals/title")
