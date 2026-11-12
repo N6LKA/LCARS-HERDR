@@ -40,7 +40,8 @@ html[data-theme=titan] .pill.violet{background:var(--steel-l);color:#eef3fa}
 html[data-theme=titan] .pill.sky{background:var(--ice)}
 html[data-theme=titan] .pill.gold{background:#d9a05b}
 html[data-theme=titan] .pill.gray{background:var(--steel);color:#dfe6f0}
-html[data-theme=titan] .pill.red,html[data-theme=titan] #btn-logout{background:var(--brick);color:#ffe9e5}
+/* RED ALERT tag from the wallpaper */
+html[data-theme=titan] .pill.red,html[data-theme=titan] #btn-logout{background:#e8452c;color:#fff}
 html[data-theme=titan] #side-show{background:var(--blue);border-radius:12px 0 0 12px}
 html[data-theme=titan] #top{gap:6px}
 html[data-theme=titan] .tbtn{background:var(--teal);color:#e8f3fa;font-weight:400;border-radius:9px;padding:0 15px}
@@ -99,7 +100,7 @@ html[data-theme=titan] .pane-h .title{background:none;color:var(--txt2);font-wei
 html[data-theme=titan] .pane.focus .pane-h .title{background:none;color:var(--cyan)}
 html[data-theme=titan] .pane.blocked .pane-h .title{background:none;color:var(--coral)}
 html[data-theme=titan] .pane.focus .pane-h .title,html[data-theme=titan] .pane.blocked .pane-h .title{color:inherit}
-html[data-theme=titan] .pane.focus .pane-h .title{color:var(--cyan)}html[data-theme=titan] .pane.blocked .pane-h .title{color:var(--coral)}
+html[data-theme=titan] .pane.focus .pane-h .title{color:var(--peach)}html[data-theme=titan] .pane.blocked .pane-h .title{color:var(--coral)}
 html[data-theme=titan] .pane-h .st{background:var(--c,var(--s-live));color:var(--ink);border-radius:8px;font-weight:400;height:20px;line-height:20px}
 html[data-theme=titan] .pane-h button{background:var(--steel);color:#e8eef6;border-radius:7px;height:20px;line-height:20px;font-weight:400;padding:0 9px}
 html[data-theme=titan] .pane.focus .pane-h button{background:var(--teal);color:#e8f3fa}
