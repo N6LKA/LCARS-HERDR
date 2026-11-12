@@ -222,18 +222,21 @@ def login(token: str, code: str, expected: str, ip: str, ua: str, local: bool) -
         t = d["totp"]
         if t["enabled"] and t["secret"] and not local:
             code = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
-            second = False
+            second, new_last, used = False, None, None
             if len(code) == 6 and code.isdigit():
                 c = _totp_match(t["secret"], code, t["last"])
                 if c:
-                    t["last"] = c
-                    second = True
+                    second, new_last = True, c
             elif code:
                 hh = _h(code)
                 if hh in d["recovery"]:
-                    d["recovery"].remove(hh)         # each recovery code works once
-                    second = True
+                    second, used = True, hh
             ok = ok and second
+            if ok:                                       # a code is used up only by a login that fully succeeds
+                if new_last:
+                    t["last"] = new_last
+                if used:
+                    d["recovery"].remove(used)
         if not ok:
             _fail(ip)
             return None

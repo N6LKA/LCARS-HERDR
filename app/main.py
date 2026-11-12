@@ -92,24 +92,32 @@ LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
 :root{color-scheme:dark}
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
-form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
+main{display:grid;gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
-input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em}</style>
-<form onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
+input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}</style>
+<main><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
 <input id=u name=username type=text value=lcars autocomplete=username aria-label=Username>
 <input id=t name=password type=password placeholder="Password" autofocus autocomplete=current-password>
 <input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
 <input id=sc name=setup-code placeholder="Setup code from the server" autocomplete=one-time-code hidden>
-<input id=c name=totp placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
-<button id=b>AUTHORIZE</button><div id=m></div></form>
-<script>let setup=false;fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;sc.hidden=!j.setup_code;b.textContent='SET PASSWORD'}else if(j.code)c.hidden=false}).catch(()=>{});
+<button id=b>AUTHORIZE</button></form>
+<form id=f2 onsubmit="return go2(event)" method=post action=/login hidden><h1>TWO-STEP CODE</h1>
+<input id=c name=totp placeholder="6-digit code" autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
+<button>VERIFY</button><a id=rec href=# onclick="return recov()">Use a recovery code instead</a></form>
+<div id=m></div></main>
+<script>let setup=false,need=false;
+fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;sc.hidden=!j.setup_code;b.textContent='SET PASSWORD'}else need=j.code}).catch(()=>{});
+function recov(){c.placeholder='Recovery code';c.inputMode='text';c.setAttribute('aria-label','Recovery code');rec.hidden=true;c.focus();return false}
+async function login(){const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
+if(r.ok){location.href='/';return}
+f2.hidden=true;f1.hidden=false;t.value='';c.value='';m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';t.focus()}
 async function go(e){e.preventDefault();m.textContent='';
 if(setup){if(t.value!==t2.value){m.textContent='The passwords do not match';return false}
 const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:t.value,code:sc.value})});
 if(r.ok)location.href='/?settings=1';else{const j=await r.json().catch(()=>({}));m.textContent=j.detail||'Not available from here'}return false}
-const r=await fetch('/api/login',{method:'POST',
-headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
-if(r.ok)location.href='/';else m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';return false}</script>"""
+if(need){f1.hidden=true;f2.hidden=false;c.focus();return false}   // the password is checked together with the code, so nothing reveals which was wrong
+await login();return false}
+async function go2(e){e.preventDefault();await login();return false}</script>"""
 
 
 class LoginBody(BaseModel):
