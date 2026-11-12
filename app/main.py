@@ -7,7 +7,6 @@ every session stays alive when the page is closed.
 import asyncio
 import base64
 import hmac
-import ipaddress
 import json
 import logging
 import os
@@ -63,6 +62,14 @@ def _same_origin(headers) -> bool:
     return urlparse(origin).netloc == host
 
 
+@app.on_event("startup")
+async def _first_run_notice():
+    if not auth.password_is_custom():
+        log.warning("LCARS first run: open the login page and choose a password. From the local network that is all; from "
+                    "anywhere else it needs this one-time setup code (valid 1 hour): %s   (new one: python3 -m app.auth setup-code)",
+                    auth.make_setup_code())
+
+
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
@@ -91,12 +98,13 @@ input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em}</style
 <form onsubmit="return go(event)"><h1 id=h>LCARS ACCESS</h1>
 <input id=t type=password placeholder="Password" autofocus autocomplete=current-password>
 <input id=t2 type=password placeholder="Password again" autocomplete=new-password hidden>
+<input id=sc placeholder="Setup code from the server" autocomplete=off hidden>
 <input id=c placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
 <button id=b>AUTHORIZE</button><div id=m></div></form>
-<script>let setup=false;fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;b.textContent='SET PASSWORD'}else if(j.code)c.hidden=false}).catch(()=>{});
+<script>let setup=false;fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;sc.hidden=!j.setup_code;b.textContent='SET PASSWORD'}else if(j.code)c.hidden=false}).catch(()=>{});
 async function go(e){e.preventDefault();m.textContent='';
 if(setup){if(t.value!==t2.value){m.textContent='The passwords do not match';return false}
-const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:t.value})});
+const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:t.value,code:sc.value})});
 if(r.ok)location.href='/?settings=1';else{const j=await r.json().catch(()=>({}));m.textContent=j.detail||'Not available from here'}return false}
 const r=await fetch('/api/login',{method:'POST',
 headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
@@ -114,23 +122,15 @@ async def login_page():
 
 
 @app.get("/api/login/info")
-async def login_info():
-    return {"code": auth.two_factor_on(), "setup": not auth.password_is_custom()}
+async def login_info(request: Request):
+    host = request.client.host if request.client else None
+    setup = not auth.password_is_custom()
+    return {"code": auth.two_factor_on(), "setup": setup, "setup_code": setup and not auth.direct_lan(request.headers, host)}
 
 
 class SetupBody(BaseModel):
     password: str
-
-
-def _setup_allowed(host: str | None) -> bool:
-    """Choosing the first password is open only to what already stands in front of the app: the proxy (which still has its
-    own login at that point) or a private/LAN address. Anyone else on the internet could otherwise claim the app first."""
-    if host in TRUSTED_PROXIES:
-        return True
-    try:
-        return ipaddress.ip_address(host or "").is_private
-    except ValueError:
-        return False
+    code: str = ""
 
 
 @app.post("/api/login/setup")
@@ -139,11 +139,16 @@ async def login_setup(body: SetupBody, request: Request):
     ip = _client(request.headers, host)
     if not _same_origin(request.headers):
         return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
-    if auth.password_is_custom() or not _setup_allowed(host):
+    if auth.password_is_custom():
         return JSONResponse({"error": "not available"}, status_code=403)
+    direct = auth.direct_lan(request.headers, host)
+    if not direct and auth.blocked(ip):
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
     try:
-        auth.setup_password(body.password)
+        auth.setup_password(body.password, body.code, direct)
     except ValueError as e:
+        if "setup code" in str(e):
+            auth._fail(ip)
         return JSONResponse({"detail": str(e)}, status_code=422)
     sid = auth.new_session(ip, request.headers.get("user-agent", ""))
     secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"

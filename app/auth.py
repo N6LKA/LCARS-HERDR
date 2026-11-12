@@ -7,8 +7,9 @@
    trusted proxy), per address and across all addresses.
  - Direct connections from this machine itself (no proxy header) skip the second factor: whoever is on the box already owns it.
    That keeps local tools and tests working.
-State lives in auth.json next to the app (mode 600). `python3 -m app.auth status | reset-2fa [--password]`
-There is no built-in password: the first visit to the login page chooses it (see /api/login/setup in main.py). manage it on the server.
+State lives in auth.json next to the app (mode 600). `python3 -m app.auth status | setup-code | reset-2fa [--password]`
+There is no built-in password: the first visit to the login page chooses it (see /api/login/setup in main.py). From the local network it needs nothing
+else; from anywhere else it needs a one-time setup code (`setup-code`, also logged at startup).. manage it on the server.
 """
 import base64
 import hashlib
@@ -43,6 +44,7 @@ def _load() -> dict:
     d.setdefault("totp", {"secret": None, "enabled": False, "last": 0})
     d.setdefault("recovery", [])
     d.setdefault("sessions", {})
+    d.setdefault("setup", None)
     d.setdefault("password", None)     # {"salt","hash"}; None until the first visit sets it
     return d
 
@@ -129,14 +131,47 @@ def _pw_ok(d: dict, pw: str, env: str, local: bool) -> bool:
     return a or (b and local)
 
 
-def setup_password(new: str) -> None:
-    """First use: choose the password. Works once; after that only a signed-in change_password can replace it."""
+SETUP_CODE_TTL = 3600
+_FORWARD = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded", "via", "cf-connecting-ip")
+
+
+def direct_lan(headers, client_host: str | None) -> bool:
+    """A browser talking straight to the app from a private/local address, with no proxy in between. A request that carries
+    any forwarding header is treated as proxied, so a reverse proxy can never make itself look like the LAN."""
+    import ipaddress
+    if any(h in headers for h in _FORWARD):
+        return False
+    try:
+        return ipaddress.ip_address(client_host or "").is_private
+    except ValueError:
+        return False
+
+
+def make_setup_code() -> str:
+    """A one-time code for the first password, valid for an hour. Shown only to someone with access to the server."""
+    with _lock:
+        d = _load()
+        code = secrets.token_hex(6)
+        d["setup"] = {"hash": _h(code), "expires": time.time() + SETUP_CODE_TTL}
+        _save(d)
+        return f"{code[:4]}-{code[4:8]}-{code[8:]}"
+
+
+def setup_password(new: str, code: str = "", direct: bool = False) -> None:
+    """First use: choose the password. Works once; after that only a signed-in change_password can replace it.
+    Without a direct local-network connection the one-time setup code is required."""
     with _lock:
         d = _load()
         if d["password"]:
             raise ValueError("a password is already set")
+        if not direct:
+            s = d.get("setup") or {}
+            given = "".join(ch for ch in (code or "") if ch.isalnum()).lower()
+            if not s or time.time() > s.get("expires", 0) or not hmac.compare_digest(_h(given), s.get("hash", "")):
+                raise ValueError("the setup code is missing, wrong or expired")
         if len(new) < MIN_PASSWORD:
             raise ValueError(f"the password needs at least {MIN_PASSWORD} characters")
+        d["setup"] = None
         salt = secrets.token_bytes(16)
         d["password"] = {"salt": salt.hex(), "hash": _scrypt(new, salt)}
         _save(d)
@@ -311,6 +346,11 @@ if __name__ == "__main__":
                 d["password"] = None
             _save(d)
         print("2FA is off and every session is signed out." + (" The password is cleared: the next visit to the login page sets a new one." if "--password" in sys.argv else "") + " Sign in and set 2FA up again.")
+    elif cmd == "setup-code":                          # for the first visit from outside the local network
+        if password_is_custom():
+            print("A password is already set, so no setup code is needed.")
+        else:
+            print("Setup code (valid 1 hour, works once):", make_setup_code())
     else:
         s = status("")
         print("2FA:", "on" if s["totp"] else "off", "| recovery codes left:", s["recovery_left"], "| sessions:", len(s["sessions"]))
