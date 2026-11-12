@@ -363,12 +363,40 @@ async function renameTab(id) {
   const v = await ask('RENAME TAB', tab.name || tabName(tab, sp.tabs.indexOf(tab)), 'empty restores the automatic name');
   if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
 }
+const SESSION_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+function replaceAddress(oldAddr, newAddr) {   // the same pane, now backed by a new terminal
+  const re = a => a === oldAddr ? newAddr : a;
+  const walk = n => !n ? n : isLeaf(n) ? { ...n, a: re(n.a) } : { ...n, c: n.c.map(walk) };
+  for (const sp of S.spaces) for (const t of sp.tabs) t.root = walk(t.root);
+  for (const k of Object.keys(S.zoomed)) if (S.zoomed[k]) S.zoomed[k] = re(S.zoomed[k]);
+  if (S.focus) S.focus = re(S.focus);
+  S.dismissed.add(oldAddr); S.terms.delete(oldAddr);
+}
 async function renameTerminal(addr) {
   addr = addr || S.focus; const t = addr && S.terms.get(addr); if (!t) return;
-  const v = await ask('RENAME THIS PANE', (t.labels && t.labels.title) || '', 'empty goes back to the automatic name');
+  const v = await ask('RENAME THIS PANE AND SESSION', (t.labels && t.labels.title) || t.name || '', 'letters, numbers, - and _ ; empty goes back to the automatic name');
   if (v === null) return;
-  try { const r = await post('/api/terminals/title', { terminal: addr, title: v }); S.terms.set(addr, { ...t, labels: r.labels || t.labels }); render(); }
-  catch (e) { toast(e.message, true); }
+  try {
+    const name = v.toLowerCase(), isClaude = t.agent === 'claude-code' || (t.labels && (t.labels.agent === 'claude' || t.labels.kind === 'claude'));
+    if (v && isClaude && !addr.includes('/') && t.name !== name) {
+      if (!SESSION_NAME.test(name)) toast('Label only: a session name can use letters, numbers, - and _ (no spaces)', true);
+      else if (confirm(`Make "${name}" this session's name too, so other agents can reach it with: hc send ${name}\n\n` +
+          `OK: restart this Claude under that name. The same conversation resumes` + (stateOf(t) === 'working' ? ', but the answer it is working on right now is lost' : '') + `.\n` +
+          `Cancel: only change the pane label (other agents cannot find it by that name).`)) {
+        const r = await post('/api/terminals/session-name', { terminal: addr, name });
+        if (r.restarted) { replaceAddress(addr, r.address); commit(); focusPane(r.address); toast(`SESSION NAMED ${name.toUpperCase()}`); return; }
+      }
+    }
+    const r = await post('/api/terminals/title', { terminal: addr, title: v }); S.terms.set(addr, { ...t, labels: r.labels || t.labels }); render();
+  } catch (e) { toast(e.message, true); }
+}
+async function newClaudeNamed(where) {
+  const v = await ask('NAME THIS CLAUDE SESSION', '', 'letters, numbers, - and _ ; this is the name for hc send');
+  if (v === null) return;
+  const name = v.toLowerCase();
+  if (name && !SESSION_NAME.test(name)) return toast('A session name can use letters, numbers, - and _ (up to 32, no spaces)', true);
+  const opt = { cwd: cwdOf(S.focus), ...(name ? { name } : {}) };
+  return where === 'tab' ? newTabWith('claude', opt) : openBeside('claude', opt);
 }
 async function renameSpace(id) {
   const sp = S.spaces.find(s => s.id === (id || S.active)); if (!sp) return;
@@ -445,6 +473,8 @@ def('space.close', 'Close space', id => closeSpace(typeof id === 'string' ? id :
 def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
 def('space.prev', 'Previous space', () => stepSpace(-1), 'Spaces');
 def('pane.new_claude', 'New Claude beside this pane', () => openBeside('claude', { cwd: cwdOf(S.focus) }), 'Panes');
+def('pane.new_claude_named', 'New Claude with a session name…', () => newClaudeNamed('pane'), 'Panes');
+def('tab.new_claude_named', 'New tab (Claude, named)…', () => newClaudeNamed('tab'), 'Tabs');
 def('pane.new_shell', 'New shell beside this pane', () => openBeside('shell', { cwd: cwdOf(S.focus) }), 'Panes');
 def('app.auto_open', 'Open helper terminals automatically: turn on or off', () => {
   S.autoOpen = !S.autoOpen; localStorage.setItem('lcars-autoopen', S.autoOpen ? 'on' : 'off');
@@ -571,7 +601,7 @@ function paneMenu(e, addr) {
 function tabMenu(e, id) {
   e.preventDefault();
   showMenu(e.clientX, e.clientY, [
-    { label: 'Rename', cmd: 'tab.rename', arg: id }, { label: 'New tab', cmd: 'tab.new' }, { label: 'New Claude tab', cmd: 'tab.new_claude' }, '-',
+    { label: 'Rename', cmd: 'tab.rename', arg: id }, { label: 'New tab', cmd: 'tab.new' }, { label: 'New Claude tab', cmd: 'tab.new_claude' }, { label: 'New Claude tab (named)…', cmd: 'tab.new_claude_named' }, '-',
     { label: 'Close', cmd: 'tab.close', arg: id },
   ]);
 }
@@ -608,6 +638,7 @@ async function agentsMenu(x, y) {
   const ok = S.agents.filter(a => a.installed), no = S.agents.filter(a => !a.installed), items = [];
   ok.forEach((a, i) => items.push({ label: a.name, key: i < 9 ? String(i + 1) : undefined, fn: () => startAgent(a) }));
   if (no.length) { items.push('-'); no.forEach(a => items.push({ label: `${a.name} · not installed`, dim: true, fn: () => showAgentInfo(a) })); }
+  items.push({ label: 'Claude, with a session name…', fn: () => newClaudeNamed('pane') });
   items.push('-', { label: 'Setup and sign-in help…', fn: () => showMenu(x, y, S.agents.map(a => ({ label: a.name + (a.installed ? '' : ' · not installed'), dim: !a.installed, fn: () => showAgentInfo(a) }))) });
   showMenu(x, y, items);
 }
@@ -760,7 +791,7 @@ class Pane {
     this.addr = addr; this.ws = null; this.dead = false; this.ended = false; this.retry = 0;
     this.el = document.createElement('div');
     this.el.className = 'pane'; this.el.dataset.addr = addr;
-    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span>${TRICORDER}<span class="st"></span>
+    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span><span class="sn" title="Session name: other agents reach this one with hc send"></span>${TRICORDER}<span class="st"></span>
       <button data-a="split_right" title="Split right">SPLIT R</button><button data-a="split_down" title="Split down">SPLIT D</button>
       <button data-a="zoom" title="Zoom">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
       <button data-a="close" class="close" title="Close pane (ends its terminal)">CLOSE</button></div>
@@ -892,6 +923,7 @@ class Pane {
     this.el.classList.toggle('blocked', st === 'blocked');
     this.el.dataset.state = st;
     $('.title', this.el).textContent = t ? `${labelOf(t)} · ${folderOf(t)}` : this.addr;
+    const sn = $('.sn', this.el); sn.textContent = t && t.name ? '@' + t.name : ''; sn.hidden = !(t && t.name);
     $('.st', this.el).textContent = STATUS_WORD[st];
     const tab = curTab(); $('[data-a=zoom]', this.el).title = tab && S.zoomed[tab.id] === this.addr ? 'Show all panes' : 'Zoom';
   }
@@ -1223,7 +1255,7 @@ function init() {
   $('#new-shell').onclick = () => startSession('shell');
   $('#tab-add').onclick = ev => {
     const r = ev.currentTarget.getBoundingClientRect();
-    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
+    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, { label: 'Claude (named)…', cmd: 'tab.new_claude_named' }, '-', { label: 'New space', cmd: 'space.new' }]);
   };
   $('#space-add').onclick = () => run('space.new');
   $('#search-btn').onclick = openPicker;

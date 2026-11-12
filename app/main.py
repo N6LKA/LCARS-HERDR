@@ -32,6 +32,8 @@ TOKEN = os.environ.get("LCARS_TOKEN", "")
 TRUSTED_PROXIES = {p.strip() for p in os.environ.get("LCARS_TRUSTED_PROXIES", "").split(",") if p.strip()}
 COOKIE = "lcars_session"
 MAX_UPLOAD = 8 * 1024 * 1024  # terminal.put accepts at most 8 MB raw
+CLAUDE_CMD = os.environ.get("LCARS_CLAUDE_CMD", "claude")      # tests point this at a stand-in
+CLAUDE_DIR = Path(os.environ.get("LCARS_CLAUDE_DIR") or Path.home() / ".claude")
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
 XTERM_ENV = {"TERM": "xterm-256color", "COLORTERM": "truecolor"}
 
@@ -435,7 +437,7 @@ async def new_terminal(body: NewTerminal):
         "no_parent": True,
     }
     if body.kind == "claude":
-        params["argv"] = ["claude", *body.args]
+        params["argv"] = [CLAUDE_CMD, *body.args]
     elif body.kind == "agent":
         # the command comes from our own list, never from the page
         if body.agent not in agents.BY_ID:
@@ -448,6 +450,7 @@ async def new_terminal(body: NewTerminal):
         params["labels"] = {"app": "lcars", "kind": "agent", "agent": body.agent}
     if body.name:
         params["name"] = body.name
+        params["labels"] = {**params.get("labels", {}), "title": body.name}   # the pane shows the session name
     if body.cwd:
         params["cwd"] = body.cwd
     if body.on:
@@ -468,6 +471,66 @@ async def remove_terminal(terminal: str):
 class TitleBody(BaseModel):
     terminal: str
     title: str = ""
+
+
+class SessionNameBody(BaseModel):
+    terminal: str
+    name: str
+
+
+def _claude_session_id(pid: int, cwd: str | None) -> str | None:
+    """The conversation a running Claude is in: Claude writes ~/.claude/sessions/<pid>.json while it runs."""
+    try:
+        d = json.loads((CLAUDE_DIR / "sessions" / f"{int(pid)}.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return None
+    sid = d.get("sessionId")
+    if not isinstance(sid, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", sid):
+        return None
+    return sid if not cwd or d.get("cwd") in (None, cwd) else None
+
+
+@app.post("/api/terminals/session-name")
+async def set_session_name(body: SessionNameBody):
+    """Give a running Claude a session name (what `hc send <name>` finds). The core fixes a name when a terminal
+    starts, so this ends the terminal and starts a new one that resumes the same conversation under the name."""
+    name = body.name.strip().lower()
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{0,31}$", name):
+        raise HTTPException(422, "name: 1-32 of a-z 0-9 _ -")
+    if "/" in body.terminal:
+        raise HTTPException(409, "a session on another machine cannot be renamed this way yet")
+    info = await rpc("terminal.get", {"terminal": body.terminal})
+    if info.get("state") != "live":
+        raise HTTPException(409, "that terminal is not running")
+    if info.get("name") == name:
+        return {"address": info["address"], "restarted": False}
+    fg = info.get("foreground") or {}
+    if fg.get("name") != "claude" or not fg.get("pid"):
+        raise HTTPException(409, "only a running Claude session can be renamed this way")
+    sid = _claude_session_id(fg["pid"], info.get("cwd"))
+    if not sid:
+        raise HTTPException(409, "could not find which conversation this Claude is in, so it was left alone")
+    live = (await rpc("terminal.list", {})).get("terminals", [])
+    if any(t.get("name") == name and t.get("address") != info["address"] for t in live):
+        raise HTTPException(409, f"another session is already named {name}")
+    labels = {**(info.get("labels") or {}), "title": name, "kind": "claude", "app": "lcars"}
+    base = {
+        "env": XTERM_ENV, "labels": labels, "no_parent": True,
+        "size": {"cols": info.get("cols") or 120, "rows": info.get("rows") or 32},
+        **({"cwd": info["cwd"]} if info.get("cwd") else {}),
+    }
+    await rpc("terminal.kill", {"terminal": info["address"]})
+    try:
+        new = await rpc("terminal.run", {**base, "name": name, "argv": [CLAUDE_CMD, "--resume", sid, "--name", name]})
+    except HTTPException:
+        # put it back as it was, so a failed rename does not lose the conversation
+        await rpc("terminal.run", {**base, "argv": [CLAUDE_CMD, "--resume", sid]})
+        raise
+    try:
+        await rpc("terminal.rm", {"terminal": info["address"]})
+    except HTTPException:
+        pass
+    return {"address": new["address"], "old": info["address"], "restarted": True}
 
 
 @app.post("/api/terminals/title")

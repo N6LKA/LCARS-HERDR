@@ -174,6 +174,8 @@ body.no-panes #empty{display:grid}
 .pane-h{display:flex;align-items:center;gap:4px;height:29px;flex:none;padding:0;background:#000}
 .pane-h .cap{width:14px;height:100%;background:var(--c,var(--s-live));flex:none}
 .pane-h .title{flex:1;min-width:0;height:100%;display:flex;align-items:center;padding:0 10px;background:var(--hdr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--hdrtext)}
+.pane-h .sn{flex:none;align-self:center;font-size:13px;font-weight:700;letter-spacing:.08em;padding:1px 8px;border-radius:9px;background:#ffffff1f;color:var(--hdrtext);text-transform:none}
+.pane-h .sn[hidden]{display:none}
 .pane.focus .pane-h .title{background:var(--orange)}
 .pane.blocked .pane-h .title{background:var(--red)}
 .pane.focus .pane-h .title,.pane.blocked .pane-h .title{color:#000}
