@@ -7,6 +7,7 @@ every session stays alive when the page is closed.
 import asyncio
 import base64
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -46,13 +47,11 @@ def _client(headers, client_host):
 
 
 def _authorized(headers, cookies, client_host: str | None) -> bool:
-    if not TOKEN and not auth.password_is_custom():
-        return False  # never run open
     if auth.session_ok(cookies.get(COOKIE, "")):
         return True
     # a program on this machine itself may present the .env access code; nothing from outside can
     bearer = headers.get("authorization", "")
-    return auth.is_local(headers, client_host) and bearer.startswith("Bearer ") and hmac.compare_digest(bearer[7:], TOKEN)
+    return bool(TOKEN) and auth.is_local(headers, client_host) and bearer.startswith("Bearer ") and hmac.compare_digest(bearer[7:], TOKEN)
 
 
 def _same_origin(headers) -> bool:
@@ -67,7 +66,7 @@ def _same_origin(headers) -> bool:
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/api/login", "/api/login/info"):
+    if path in ("/login", "/api/login", "/api/login/info", "/api/login/setup"):
         return await call_next(request)
     if not _authorized(request.headers, request.cookies, request.client.host if request.client else None):
         if path.startswith("/api/"):
@@ -89,12 +88,17 @@ body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:
 form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em}</style>
-<form onsubmit="return go(event)"><h1>LCARS ACCESS</h1>
+<form onsubmit="return go(event)"><h1 id=h>LCARS ACCESS</h1>
 <input id=t type=password placeholder="Password" autofocus autocomplete=current-password>
+<input id=t2 type=password placeholder="Password again" autocomplete=new-password hidden>
 <input id=c placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
-<button>AUTHORIZE</button><div id=m></div></form>
-<script>fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.code)c.hidden=false}).catch(()=>{});
-async function go(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',
+<button id=b>AUTHORIZE</button><div id=m></div></form>
+<script>let setup=false;fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.setup){setup=true;h.textContent='CHOOSE A PASSWORD';t.placeholder='New password (12+ characters)';t.autocomplete='new-password';t2.hidden=false;b.textContent='SET PASSWORD'}else if(j.code)c.hidden=false}).catch(()=>{});
+async function go(e){e.preventDefault();m.textContent='';
+if(setup){if(t.value!==t2.value){m.textContent='The passwords do not match';return false}
+const r=await fetch('/api/login/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:t.value})});
+if(r.ok)location.href='/?settings=1';else{const j=await r.json().catch(()=>({}));m.textContent=j.detail||'Not available from here'}return false}
+const r=await fetch('/api/login',{method:'POST',
 headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
 if(r.ok)location.href='/';else m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';return false}</script>"""
 
@@ -111,7 +115,41 @@ async def login_page():
 
 @app.get("/api/login/info")
 async def login_info():
-    return {"code": auth.two_factor_on()}
+    return {"code": auth.two_factor_on(), "setup": not auth.password_is_custom()}
+
+
+class SetupBody(BaseModel):
+    password: str
+
+
+def _setup_allowed(host: str | None) -> bool:
+    """Choosing the first password is open only to what already stands in front of the app: the proxy (which still has its
+    own login at that point) or a private/LAN address. Anyone else on the internet could otherwise claim the app first."""
+    if host in TRUSTED_PROXIES:
+        return True
+    try:
+        return ipaddress.ip_address(host or "").is_private
+    except ValueError:
+        return False
+
+
+@app.post("/api/login/setup")
+async def login_setup(body: SetupBody, request: Request):
+    host = request.client.host if request.client else None
+    ip = _client(request.headers, host)
+    if not _same_origin(request.headers):
+        return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
+    if auth.password_is_custom() or not _setup_allowed(host):
+        return JSONResponse({"error": "not available"}, status_code=403)
+    try:
+        auth.setup_password(body.password)
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+    sid = auth.new_session(ip, request.headers.get("user-agent", ""))
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(COOKIE, sid, httponly=True, samesite="strict", secure=secure, max_age=auth.SESSION_MAX)
+    return resp
 
 
 @app.post("/api/login")

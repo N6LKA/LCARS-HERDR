@@ -53,6 +53,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#btn-settings').onclick = open;
+    if (new URLSearchParams(location.search).has('settings')) { history.replaceState(null, '', '/'); setTimeout(open, 600); }   // right after choosing a password: offer 2FA
     $('#side-settings').onclick = () => { document.body.classList.remove('side-open'); open(); };
     $('#sec-close').onclick = () => { $('#sec-dlg').close(); $('#sec-rc').textContent = ''; };
     $('#sec-pw').onclick = changePw;
