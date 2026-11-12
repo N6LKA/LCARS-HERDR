@@ -220,8 +220,12 @@ dialog h3{margin:0 0 12px;color:var(--orange);letter-spacing:.2em}
 dialog label{display:grid;gap:4px;margin-bottom:10px;font-size:13px;color:var(--peach)}
 dialog label.chk{display:flex;align-items:center;gap:8px}
 dialog label.chk input{width:auto}
-#side-settings{display:none}
-@media (max-width:820px){#side-settings{display:block}}
+#side-settings,#side-logout{display:none}
+@media (max-width:820px){#side-settings,#side-logout{display:block}}
+#btn-logout{background:var(--red)}
+.sec-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.sec-head h3{margin:0}
+.sec-head .pill{min-height:30px;padding:0 16px;font-size:14px}
 #mach-dlg{width:min(520px,94vw)}
 #sec-back{position:fixed;inset:0;background:#000a;z-index:58}
 #sec-dlg[open]{position:fixed;inset:0;margin:auto;height:fit-content;z-index:59;width:min(520px,94vw);max-height:90vh;overflow-y:auto}

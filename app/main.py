@@ -92,11 +92,11 @@ LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
 :root{color-scheme:dark}
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px 0;box-sizing:border-box}
-main{display:grid;gap:12px;width:min(320px,90vw)}#logo{display:block;margin:0 auto 10px;width:min(260px,66vw,36vh);height:auto;aspect-ratio:1}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,90vw)}#logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
 p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
-<main><img id=logo src=/static/sf-logo.png width=260 height=260 alt="Starfleet Command" decoding=async><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
+<main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command" decoding=async><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
 <input id=u name=username type=text placeholder="Username" autofocus autocomplete=username autocapitalize=none spellcheck=false required>
 <input id=t name=password type=password placeholder="Password" autocomplete=current-password required>
 <input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
@@ -162,12 +162,12 @@ CODE_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="w
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
 :root{color-scheme:dark}
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px 0;box-sizing:border-box}
-main{display:grid;gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
-#logo{display:block;margin:0 auto 10px;width:min(260px,66vw,36vh);height:auto;aspect-ratio:1}
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,90vw)}form{display:grid;gap:12px}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
+#logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
 p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
-<main><img id=logo src=/static/sf-logo.png width=260 height=260 alt="Starfleet Command">
+<main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command">
 <form id=f onsubmit="return go(event)" method=post action=/login/code><h1>TWO-STEP CODE</h1>
 <input id=c name=totp type=text placeholder="6-digit code" autofocus autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
 <p>If your account does not use 2FA, leave this empty.</p>

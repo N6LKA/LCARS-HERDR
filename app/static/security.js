@@ -100,6 +100,7 @@
       setTimeout(() => { btn.textContent = was; }, 2500);
     };
     $('#sec-others').onclick = async () => { try { await api('/api/auth/logout-others', {}); refresh(); } catch (e) { say('#sec-2fa-msg', e.message, true); } };
-    $('#sec-out').onclick = async () => { try { await api('/api/auth/logout', {}); } catch {} location.href = '/login'; };
+    const signOut = async () => { try { await api('/api/auth/logout', {}); } catch {} location.href = '/login'; };
+    $('#sec-out').onclick = signOut; $('#btn-logout').onclick = signOut; $('#side-logout').onclick = signOut;
   });
 })();
