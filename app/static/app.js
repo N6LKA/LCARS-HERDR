@@ -741,6 +741,13 @@ const XTERM_THEME = {
   black: '#000000', red: '#ff5544', green: '#7fd17f', yellow: '#ffcc66', blue: '#5599ff', magenta: '#cc99cc', cyan: '#99ccff', white: '#ffcc99',
   brightBlack: '#666688', brightRed: '#ff7766', brightGreen: '#9be89b', brightYellow: '#ffe08a', brightBlue: '#99bbff', brightMagenta: '#e0b0e0', brightCyan: '#bde0ff', brightWhite: '#ffffff',
 };
+const XTERM_PICARD = {
+  background: '#02050a', foreground: '#d6e4ee', cursor: '#5ad2f4', cursorAccent: '#02050a', selectionBackground: '#1d5a74aa',
+  black: '#02050a', red: '#ff5d5d', green: '#7fe0a8', yellow: '#f2c14a', blue: '#5a8cff', magenta: '#b88cff', cyan: '#5ad2f4', white: '#d6e4ee',
+  brightBlack: '#5b6f82', brightRed: '#ff8080', brightGreen: '#a0f0c0', brightYellow: '#ffd978', brightBlue: '#88aaff', brightMagenta: '#cfaaff', brightCyan: '#8fe4fa', brightWhite: '#ffffff',
+};
+const xtermTheme = () => document.documentElement.dataset.theme === 'picard' ? XTERM_PICARD : XTERM_THEME;
+window.addEventListener('lcars-theme', () => { for (const p of P.values()) { try { p.term.options.theme = xtermTheme(); } catch {} } });
 const hasFiles = ev => ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes('Files');
 
 class Pane {
@@ -756,7 +763,7 @@ class Pane {
     this.body = $('.pane-b', this.el);
     this.term = new Terminal({
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'), fontSize: S.font, lineHeight: 1.0,
-      cursorBlink: true, scrollback: 5000, theme: XTERM_THEME, allowProposedApi: true, macOptionIsMeta: true,
+      cursorBlink: true, scrollback: 5000, theme: xtermTheme(), allowProposedApi: true, macOptionIsMeta: true,
     });
     this.fit = new FitAddon.FitAddon();
     this.term.loadAddon(this.fit);

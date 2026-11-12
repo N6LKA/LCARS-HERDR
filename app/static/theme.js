@@ -1,0 +1,32 @@
+// Look of the interface: TNG era (the original) or Picard era. The choice is kept in this browser (so the page paints
+// the right look at once) and in the signed-in account (so every device follows it).
+(() => {
+  const KEY = 'lcars-theme', VALID = ['tng', 'picard'];
+  const cur = () => document.documentElement.dataset.theme === 'picard' ? 'picard' : 'tng';
+  function mark() {
+    document.querySelectorAll('#sec-themes button').forEach(b => {
+      const on = b.dataset.theme === cur(); b.setAttribute('aria-pressed', on);
+      b.textContent = (on ? '\u2713 ' : '') + (b.dataset.label || b.textContent.replace('\u2713 ', ''));
+    });
+  }
+  function apply(t) {
+    if (!VALID.includes(t)) return;
+    if (t === 'picard') document.documentElement.dataset.theme = 'picard'; else delete document.documentElement.dataset.theme;
+    try { localStorage.setItem(KEY, t); } catch {}
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', t === 'picard' ? '#03060a' : '#000000');
+    window.dispatchEvent(new CustomEvent('lcars-theme', { detail: t }));
+    mark();
+  }
+  const saveToAccount = t => fetch('/api/auth/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: t }) }).catch(() => {});
+  window.lcarsTheme = { apply, cur };
+  // follow the account's choice (set on another device), or hand it this browser's choice if the account has none yet
+  fetch('/api/auth/status').then(r => r.ok ? r.json() : null).then(s => {
+    if (!s || !s.user) return;
+    const t = s.prefs && s.prefs.theme;
+    if (t && t !== cur()) apply(t); else if (!t && cur() !== 'tng') saveToAccount(cur());
+  }).catch(() => {});
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('#sec-themes button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { apply(b.dataset.theme); saveToAccount(b.dataset.theme); }; });
+    mark();
+  });
+})();

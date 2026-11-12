@@ -129,6 +129,19 @@ def otpauth_uri(secret: str, user: str = "lcars") -> str:
     return f"otpauth://totp/{ISSUER}:{user}?secret={secret}&issuer={ISSUER}&algorithm=SHA1&digits=6&period=30"
 
 
+PREF_CHOICES = {"theme": ("tng", "picard")}          # the preferences a user may keep on their account, and their allowed values
+
+
+def set_pref(user: str, key: str, value: str) -> None:
+    with _lock:
+        d = _load()
+        u = _account(d, user)
+        if value not in PREF_CHOICES.get(key, ()):
+            raise ValueError("unknown preference or value")
+        u.setdefault("prefs", {})[key] = value
+        _save(d)
+
+
 def _totp_on(u: dict) -> bool:
     t = u.get("totp") or {}
     return bool(t.get("enabled") and t.get("secret"))
@@ -377,7 +390,7 @@ def status(sid: str) -> dict:
         me = (d["sessions"].get(mine) or {}).get("user")
         u = d["users"].get(me) or {}
         out = {
-            "user": me, "role": u.get("role"),
+            "user": me, "role": u.get("role"), "prefs": u.get("prefs") or {},
             "totp": _totp_on(u), "recovery_left": len(u.get("recovery") or []),
             "sessions": sorted(({"id": k[:8], "created": s["created"], "last": s["last"], "ip": s["ip"], "ua": s["ua"],
                                  "current": k == mine} for k, s in d["sessions"].items() if s.get("user") == me), key=lambda x: -x["last"]),

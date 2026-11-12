@@ -37,7 +37,7 @@
     for (const i of ['#sec-cur', '#sec-new', '#sec-new2', '#sec-code', '#sec-newname', '#sec-name-pw', '#sec-u-name', '#sec-u-pw']) $(i).value = '';
     for (const m of ['#sec-pw-msg', '#sec-2fa-msg', '#sec-name-msg', '#sec-u-msg']) say(m, '');
     setting = false; $('#sec-recovery').hidden = true;
-    $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-cur').focus(); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
+    $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-dlg').scrollTop = 0; $('#sec-dlg').focus({ preventScroll: true }); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
   }
 
   async function changeName() {

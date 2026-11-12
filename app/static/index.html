@@ -15,7 +15,9 @@
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="icon" href="/static/favicon.png">
 <link rel="stylesheet" href="/static/vendor/xterm.css">
+<script>try{if(localStorage.getItem("lcars-theme")==="picard")document.documentElement.dataset.theme="picard"}catch(e){}</script>
 <link rel="stylesheet" href="/static/lcars.css">
+<link rel="stylesheet" href="/static/theme-picard.css">
 </head>
 <body>
 <div id="app">
@@ -118,9 +120,13 @@
 </dialog>
 
 <div id="sec-back" hidden></div>
-<dialog id="sec-dlg" aria-labelledby="sec-title">
+<dialog id="sec-dlg" aria-labelledby="sec-title" tabindex="-1">
   <div id="sec-form">
     <div class="sec-head"><h3 id="sec-title">SETTINGS</h3><button type="button" class="pill red" id="sec-out">SIGN OUT</button></div>
+    <section><h4>APPEARANCE</h4>
+      <p class="dim">How LCARS looks. Saved to your account, so every device you sign in on follows it.</p>
+      <div class="row" id="sec-themes"><button type="button" class="pill orange" data-theme="tng">TNG ERA</button><button type="button" class="pill sky" data-theme="picard">PICARD ERA</button></div>
+      <p class="dim" id="sec-theme-msg"></p></section>
     <section><h4>ACCOUNT</h4>
       <p class="dim" id="sec-who"></p>
       <form id="sec-nameform" autocomplete="off" action="#">
@@ -217,6 +223,7 @@
 <script src="/static/vendor/addon-unicode11.js"></script>
 <script src="/static/vendor/addon-webgl.js"></script>
 <script src="/static/panel.js"></script>
+<script src="/static/theme.js"></script>
 <script src="/static/security.js"></script>
 <script src="/static/app.js"></script>
 </body>

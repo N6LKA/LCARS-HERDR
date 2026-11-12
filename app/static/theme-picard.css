@@ -1,0 +1,173 @@
+/* PICARD ERA look. Applies only when <html data-theme="picard">; without it the original TNG look (lcars.css) is untouched.
+   Cooler and flatter than TNG: deep blue-black, cyan and amber, hairline rules, angled corners, soft glow instead of big
+   solid colour blocks. Same markup, same layout, same behaviour: this file only changes how things look. */
+html[data-theme=picard]{
+  --orange:#5ad2f4;            /* the main accent (active, focus, hover): cyan */
+  --peach:#f2a54a;             /* the second accent: amber */
+  --tan:#d6e4ee;               /* ordinary text */
+  --lilac:#a9b6ff;--violet:#6f8cff;--sky:#5ad2f4;--gold:#f2a54a;--red:#ff5d5d;--gray:#5b6f82;
+  --tabdim:#1b2b3a;--hdr:#0f1b27;--hdrtext:#9fb4c6;
+  --s-working:#f2a54a;--s-blocked:#ff5d5d;--s-done:#5ad2f4;--s-idle:#6f8cff;--s-live:#5b6f82;--s-ended:#2e3a46;
+  --pbg:#070d14;--pbg2:#0c1621;--line:#1c2d3d;--glow:0 0 14px #5ad2f455;
+  --cut:10px;
+}
+html[data-theme=picard],html[data-theme=picard] body{background:#03060a;color:var(--tan);letter-spacing:.09em}
+html[data-theme=picard] body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse at 18% 0%,#0d2233 0,transparent 55%),radial-gradient(ellipse at 100% 100%,#14100a 0,transparent 50%)}
+html[data-theme=picard] #app{z-index:1;padding:8px;gap:6px}
+html[data-theme=picard] ::-webkit-scrollbar{width:8px;height:8px}
+html[data-theme=picard] ::-webkit-scrollbar-thumb{background:#24384a;border-radius:4px}
+html[data-theme=picard] ::-webkit-scrollbar-track{background:transparent}
+
+/* buttons share one shape: tinted panel, accent bar on the left, angled corner */
+html[data-theme=picard] .pill,html[data-theme=picard] .tbtn,html[data-theme=picard] #tab-add,html[data-theme=picard] #menu-btn{
+  --pc:var(--orange);color:var(--pc);border-radius:0;
+  background:color-mix(in srgb,var(--pc) 13%,var(--pbg));box-shadow:inset 3px 0 0 var(--pc);
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,0 100%);transition:background .15s,box-shadow .15s}
+html[data-theme=picard] .pill:hover,html[data-theme=picard] .tbtn:hover{filter:none;background:color-mix(in srgb,var(--pc) 26%,var(--pbg))}
+html[data-theme=picard] .pill:active{filter:none;background:color-mix(in srgb,var(--pc) 38%,var(--pbg))}
+html[data-theme=picard] .pill.orange,html[data-theme=picard] #tab-add{--pc:var(--orange)}
+html[data-theme=picard] .pill.peach{--pc:var(--peach)}
+html[data-theme=picard] .pill.tan{--pc:var(--tan)}
+html[data-theme=picard] .pill.lilac{--pc:var(--lilac)}
+html[data-theme=picard] .pill.violet{--pc:var(--violet)}
+html[data-theme=picard] .pill.sky{--pc:var(--sky)}
+html[data-theme=picard] .pill.gold{--pc:var(--gold)}
+html[data-theme=picard] .pill.gray{--pc:var(--gray);color:#b9c8d6}
+html[data-theme=picard] .pill.red,html[data-theme=picard] #btn-logout{--pc:var(--red)}
+html[data-theme=picard] #btn-logout{background:color-mix(in srgb,var(--red) 13%,var(--pbg))}
+html[data-theme=picard] #btn-logout:hover{background:color-mix(in srgb,var(--red) 26%,var(--pbg))}
+html[data-theme=picard] .tbtn{--pc:var(--sky);background:color-mix(in srgb,var(--pc) 10%,var(--pbg))}
+html[data-theme=picard] .tbtn.on{background:color-mix(in srgb,var(--orange) 30%,var(--pbg));box-shadow:inset 3px 0 0 var(--orange),var(--glow)}
+html[data-theme=picard] #menu-btn{--pc:var(--orange)}
+
+/* frame: a thin elbow line instead of the solid block */
+html[data-theme=picard] #elbow{background:none;border-radius:34px 0 0 0;border-top:3px solid var(--orange);border-left:3px solid var(--orange);color:var(--orange);box-shadow:var(--glow)}
+html[data-theme=picard] #elbow::before{left:-3px;width:3px;background:var(--orange)}
+html[data-theme=picard] #elbow::after{display:none}
+html[data-theme=picard] #brand{letter-spacing:.34em;font-weight:400;color:var(--orange)}
+html[data-theme=picard] .ico{color:var(--orange)}
+html[data-theme=picard] .ico:hover{background:#5ad2f422}
+html[data-theme=picard] #top-info{background:none;color:var(--hdrtext);border-bottom:1px solid var(--line);font-weight:400;letter-spacing:.2em}
+html[data-theme=picard] #top-cap{background:none;border-top:3px solid var(--violet);border-right:3px solid var(--violet);border-radius:0 18px 0 0;width:26px}
+html[data-theme=picard] #topbar-fill{color:var(--tan)}
+
+/* tabs */
+html[data-theme=picard] .tab{background:var(--pbg);color:var(--hdrtext);border-radius:0;border-bottom:2px solid var(--line);font-weight:400;
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
+html[data-theme=picard] .tab.on{color:var(--orange);border-bottom-color:var(--orange);background:color-mix(in srgb,var(--orange) 10%,var(--pbg));box-shadow:0 6px 12px -8px var(--orange)}
+html[data-theme=picard] .tab[data-state=blocked]{background:color-mix(in srgb,var(--red) 22%,var(--pbg));color:var(--red);border-bottom-color:var(--red)}
+html[data-theme=picard] .tab .x{color:var(--hdrtext)}
+html[data-theme=picard] .tab .mk i{background:var(--c,var(--s-live))}
+
+/* sidebar: thin rails, ghost rows with an accent bar */
+html[data-theme=picard] .rail{width:26px;background:none;border-left:3px solid var(--c);color:var(--c);align-items:flex-end;justify-content:flex-start;padding:0 0 4px 5px;font-weight:400;box-shadow:inset 10px 0 12px -12px var(--c)}
+html[data-theme=picard] .rail-title{color:var(--orange);font-weight:400;letter-spacing:.24em}
+html[data-theme=picard] #blk-agents .rail-title{color:var(--lilac)}
+html[data-theme=picard] .rail-add,html[data-theme=picard] .rail-ico{background:none;border-radius:0;color:var(--orange);box-shadow:inset 0 0 0 1px var(--orange)}
+html[data-theme=picard] .rail-add:hover,html[data-theme=picard] .rail-ico:hover{background:#5ad2f422}
+html[data-theme=picard] .mrow .cap{background:none;border-left:3px solid var(--c);border-radius:0;width:6px}
+html[data-theme=picard] .mrow .bar{background:color-mix(in srgb,var(--c) 14%,var(--pbg));color:var(--c);border-radius:0;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%)}
+html[data-theme=picard] .mrow .mn,html[data-theme=picard] .mrow .mplus,html[data-theme=picard] .mrow .chev{color:var(--c);font-weight:400}
+html[data-theme=picard] .mrow .st{border-color:var(--pbg)}
+html[data-theme=picard] .row .tile{background:none;color:var(--c,var(--tan));border-left:3px solid var(--c,var(--tan));border-radius:0;font-weight:400;width:26px}
+html[data-theme=picard] .row .nm{background:var(--pbg);color:var(--hdrtext);border-radius:0;border-bottom:1px solid var(--line)}
+html[data-theme=picard] .row .nm small{color:#6f8499}
+html[data-theme=picard] .row:hover .nm{background:var(--pbg2);color:var(--tan)}
+html[data-theme=picard] .row.on .nm{background:color-mix(in srgb,var(--orange) 14%,var(--pbg));color:var(--orange);border-bottom-color:var(--orange);box-shadow:var(--glow)}
+html[data-theme=picard] .row .mk,html[data-theme=picard] .tri{background:var(--pbg)}
+html[data-theme=picard] .row .kill{background:var(--pbg);color:var(--red);border-radius:0;border-bottom:1px solid var(--line)}
+html[data-theme=picard] .grp{font-weight:400;letter-spacing:.22em}
+html[data-theme=picard] .agent .blk{background:none;color:var(--c);border-left:3px solid var(--c);border-radius:0;font-weight:400;box-shadow:inset 12px 0 14px -14px var(--c);width:64px}
+html[data-theme=picard] .agent .nm{color:var(--tan)}
+html[data-theme=picard] .agent.in .nm{background:var(--pbg2);color:#fff}
+html[data-theme=picard] .agent.here .nm{background:color-mix(in srgb,var(--orange) 14%,var(--pbg));color:var(--orange)}
+html[data-theme=picard] .agent.here .nm small{color:var(--hdrtext)}
+html[data-theme=picard] .term .dot{background:none;border-left:3px solid var(--c,var(--s-live));border-radius:0;width:6px}
+html[data-theme=picard] .foot .pill{padding-left:16px;text-align:left}
+html[data-theme=picard] .machine .cap{background:none;border-left:3px solid var(--lilac);border-radius:0;width:6px}
+html[data-theme=picard] .machine .bar{background:var(--pbg);color:var(--lilac);border-radius:0;font-weight:400}
+html[data-theme=picard] .machine i{border-color:var(--pbg)}
+
+/* panes: hairline frame with a glowing edge when focused */
+html[data-theme=picard] .pane{background:#02050a;border:1px solid var(--line);border-radius:0;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)}
+html[data-theme=picard] .pane.focus{border-color:var(--orange);box-shadow:inset 0 0 0 1px #5ad2f433,var(--glow)}
+html[data-theme=picard] .pane.blocked{border-color:var(--red)}
+@keyframes alert-border-p{50%{border-color:#5a1f24}}
+html[data-theme=picard] .pane.blocked{animation:alert-border-p 1.4s ease-in-out infinite}
+html[data-theme=picard] .pane-h{background:var(--pbg);height:30px;border-bottom:1px solid var(--line);gap:6px}
+html[data-theme=picard] .pane-h .cap{width:5px;background:var(--c,var(--s-live));box-shadow:0 0 10px var(--c,var(--s-live))}
+html[data-theme=picard] .pane-h .title{background:none;color:var(--hdrtext);font-weight:400;letter-spacing:.14em}
+html[data-theme=picard] .pane.focus .pane-h .title{background:none;color:var(--orange)}
+html[data-theme=picard] .pane.blocked .pane-h .title{background:none;color:var(--red)}
+html[data-theme=picard] .pane-h .st{background:none;color:var(--c,var(--s-live));border:1px solid var(--c,var(--s-live));border-radius:0;font-weight:400;height:20px;line-height:18px;padding:0 9px}
+html[data-theme=picard] .pane-h button{background:none;color:var(--hdrtext);border-radius:0;box-shadow:inset 0 -1px 0 var(--line);font-weight:400}
+html[data-theme=picard] .pane.focus .pane-h button{background:none;color:var(--orange);box-shadow:inset 0 -1px 0 var(--orange)}
+html[data-theme=picard] .pane-h button:hover{filter:none;background:#5ad2f41a}
+html[data-theme=picard] .pane-h .close,html[data-theme=picard] .pane.focus .pane-h .close,html[data-theme=picard] .pane.blocked .pane-h .close{background:none;color:var(--red);box-shadow:inset 0 -1px 0 #5a1f24}
+html[data-theme=picard] .pane-b{background:#02050a}
+html[data-theme=picard] .pane-b .xterm-viewport{background:#02050a!important}
+html[data-theme=picard] .pane-msg{background:var(--red);border-radius:0}
+html[data-theme=picard] .divider::after{background:var(--line)}
+html[data-theme=picard] .divider:hover::after,html[data-theme=picard] .divider.active::after,html[data-theme=picard] #sdiv:hover::after,html[data-theme=picard] #sdiv.active::after,html[data-theme=picard] #pdiv:hover::after,html[data-theme=picard] #pdiv.active::after{background:var(--orange);box-shadow:var(--glow)}
+html[data-theme=picard] #empty{color:var(--orange)}
+html[data-theme=picard] #empty h2{font-weight:400;letter-spacing:.36em}
+html[data-theme=picard] #empty p{color:#6f8499}
+html[data-theme=picard] .pane.drop::after{background:#5ad2f422;border-color:var(--orange);color:var(--orange);font-weight:400}
+html[data-theme=picard] .dropzone{background:#5ad2f422;border-color:var(--orange);border-radius:0}
+
+/* the moving bars keep working; they just take the cooler colours */
+html[data-theme=picard] .tri i,html[data-theme=picard] .mk i{border-radius:0;box-shadow:0 0 6px var(--c,var(--s-live))}
+
+/* status strip */
+html[data-theme=picard] #foot{font-weight:400;letter-spacing:.16em}
+html[data-theme=picard] .chip{background:var(--pbg);color:var(--c,var(--violet));border-top:2px solid var(--c,var(--violet))}
+html[data-theme=picard] .chip.fill{background:none;border-top-color:var(--line)}
+html[data-theme=picard] #f-core{border-radius:0 0 0 26px;border-left:3px solid var(--gold);border-top:0;border-bottom:3px solid var(--gold);background:none;color:var(--gold)}
+html[data-theme=picard] #f-core::before{background:var(--gold);left:-3px;width:3px}
+html[data-theme=picard] #f-core::after{display:none}
+html[data-theme=picard] #f-hint{border-radius:0;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
+html[data-theme=picard] #f-agents.warn,html[data-theme=picard] #conn.bad{--c:var(--red)}
+
+/* dialogs, menus, palette */
+html[data-theme=picard] dialog{background:rgba(7,13,20,.94);color:var(--tan);border:1px solid var(--orange);border-radius:0;box-shadow:var(--glow),0 20px 60px #000c;
+  clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,22px 100%,0 calc(100% - 22px))}
+html[data-theme=picard] dialog::backdrop{background:#02060ccc;backdrop-filter:blur(3px)}
+html[data-theme=picard] #sec-back{background:#02060ccc;backdrop-filter:blur(3px)}
+html[data-theme=picard] dialog h3{color:var(--orange);font-weight:400;letter-spacing:.3em}
+html[data-theme=picard] dialog label{color:var(--peach)}
+html[data-theme=picard] dialog input,html[data-theme=picard] #c-msg{background:var(--pbg2);color:var(--tan);border-radius:0;border-bottom:1px solid var(--line);box-shadow:none}
+html[data-theme=picard] dialog input:focus,html[data-theme=picard] #c-msg:focus{outline:0;border-bottom-color:var(--orange);box-shadow:0 6px 12px -8px var(--orange)}
+html[data-theme=picard] dialog .pill{border-radius:0}
+html[data-theme=picard] #sec-dlg section{border-top:1px solid var(--line)}
+html[data-theme=picard] #sec-dlg h4,html[data-theme=picard] #help-body h4,html[data-theme=picard] #info-body h4{color:var(--lilac);font-weight:400;letter-spacing:.26em}
+html[data-theme=picard] .urow,html[data-theme=picard] .icode,html[data-theme=picard] #sec-rc{background:var(--pbg2);border-radius:0;border-left:3px solid var(--lilac)}
+html[data-theme=picard] .icode code,html[data-theme=picard] #sec-rc,html[data-theme=picard] .hrow kbd{color:var(--peach)}
+html[data-theme=picard] .hrow:hover{background:var(--pbg2)}html[data-theme=picard] .hrow.alt{background:var(--pbg)}
+html[data-theme=picard] .hrow{border-radius:0}
+html[data-theme=picard] .hnote,html[data-theme=picard] .dim,html[data-theme=picard] .pmsg.dim{color:#6f8499}
+html[data-theme=picard] .pal-item{border-radius:0;color:var(--tan)}
+html[data-theme=picard] .pal-item.sel,html[data-theme=picard] .pal-item:hover{background:color-mix(in srgb,var(--orange) 20%,var(--pbg));color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
+html[data-theme=picard] #pal-dlg,html[data-theme=picard] #pick-dlg{border-radius:0}
+html[data-theme=picard] .ctx{background:rgba(7,13,20,.96);border:1px solid var(--orange);border-radius:0;box-shadow:var(--glow),0 8px 30px #000c;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)}
+html[data-theme=picard] .ctx .it{border-radius:0;color:var(--tan)}
+html[data-theme=picard] .ctx .it.sel,html[data-theme=picard] .ctx .it:hover{background:color-mix(in srgb,var(--orange) 20%,var(--pbg));color:var(--orange);box-shadow:inset 3px 0 0 var(--orange)}
+html[data-theme=picard] .ctx .it.chk.sel::after,html[data-theme=picard] .ctx .it.chk:hover::after{color:var(--orange)}
+html[data-theme=picard] .ctx hr{border-top-color:var(--line)}
+html[data-theme=picard] #toast{background:color-mix(in srgb,var(--orange) 18%,var(--pbg));color:var(--orange);border:1px solid var(--orange);border-radius:0;font-weight:400;box-shadow:var(--glow)}
+html[data-theme=picard] #toast.err{background:color-mix(in srgb,var(--red) 18%,var(--pbg));color:var(--red);border-color:var(--red);box-shadow:0 0 14px #ff5d5d55}
+html[data-theme=picard] #keybar button{background:color-mix(in srgb,var(--lilac) 14%,var(--pbg));color:var(--lilac);border-radius:0;box-shadow:inset 0 -2px 0 var(--lilac)}
+
+/* Files and Changes panel */
+html[data-theme=picard] #panel{background:#050a10;border:1px solid var(--line);border-radius:0}
+html[data-theme=picard] #p-head{background:var(--pbg);border-bottom:1px solid var(--line)}
+html[data-theme=picard] #p-title{font-weight:400;letter-spacing:.3em}
+html[data-theme=picard] .frow:hover{background:var(--pbg2)}html[data-theme=picard] .frow.sel{background:color-mix(in srgb,var(--orange) 14%,var(--pbg))}
+html[data-theme=picard] .frow .ico{color:var(--lilac)}
+html[data-theme=picard] .vbar,html[data-theme=picard] .chead,html[data-theme=picard] #p-foot{background:var(--pbg)}
+html[data-theme=picard] .dl .t{color:#d6e4ee}html[data-theme=picard] .dl.hunk{background:var(--pbg2)}
+html[data-theme=picard] .chead .cnt{background:none;color:var(--lilac);border:1px solid var(--lilac);border-radius:0}
+html[data-theme=picard] .clist{border-bottom-color:var(--line)}
+html[data-theme=picard] .pill.small{border-radius:0}
+
+@media (prefers-reduced-motion:reduce){html[data-theme=picard] .pane.blocked{animation:none}}
