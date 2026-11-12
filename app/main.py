@@ -88,6 +88,17 @@ async def guard(request: Request, call_next):
     return response
 
 
+STARFIELD = """<canvas id=stars aria-hidden=true></canvas>
+<script>(()=>{const cv=document.getElementById('stars'),cx=cv.getContext('2d');let W=0,H=0,S=[],still=matchMedia('(prefers-reduced-motion:reduce)').matches;
+// like the old LCARS: small dim stars that twinkle and drift very slowly, some bluish
+const mk=()=>({x:Math.random(),y:Math.random(),r:.35+Math.random()*.95,a:.14+Math.random()*.44,p:Math.random()*6.283,sp:.007+Math.random()*.02,dx:(Math.random()-.5)*.00005,dy:(Math.random()-.5)*.00005,b:Math.random()<.32});
+function size(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.round(W*d);cv.height=Math.round(H*d);cx.setTransform(d,0,0,d,0,0);
+ const n=Math.max(90,Math.min(340,Math.round(W*H/5500)));while(S.length<n)S.push(mk());S.length=n;paint()}
+function paint(){cx.clearRect(0,0,W,H);for(const s of S){const a=s.a*(.55+Math.sin(s.p)*.45);cx.fillStyle=s.b?`rgba(160,210,255,${a.toFixed(2)})`:`rgba(215,225,255,${a.toFixed(2)})`;cx.beginPath();cx.arc(s.x*W,s.y*H,s.r,0,6.283);cx.fill()}}
+let last=0;function tick(t){if(t-last>33){last=t;for(const s of S){s.p+=s.sp;s.x+=s.dx;s.y+=s.dy;if(s.x<0)s.x=1;if(s.x>1)s.x=0;if(s.y<0)s.y=1;if(s.y>1)s.y=0}paint()}requestAnimationFrame(tick)}
+addEventListener('resize',size);size();if(!still)requestAnimationFrame(tick)})()</script>"""
+STARFIELD_CSS = "#stars{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}main{position:relative;z-index:1}"
+
 LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
 :root{color-scheme:dark}
@@ -95,8 +106,8 @@ body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:
 main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,90vw)}#logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}form{display:grid;gap:12px}[hidden]{display:none!important}h1{margin:0;letter-spacing:.2em;font-size:20px;text-align:center}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
-p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
-<main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command" decoding=async><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
+p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}/*STARS_CSS*/</style>
+<!--STARS--><main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command" decoding=async><form id=f1 onsubmit="return go(event)" method=post action=/login><h1 id=h>LCARS ACCESS</h1>
 <input id=u name=username type=text placeholder="Username" autofocus autocomplete=username autocapitalize=none spellcheck=false required>
 <input id=t name=password type=password placeholder="Password" autocomplete=current-password required>
 <input id=t2 name=password-confirm type=password placeholder="Password again" autocomplete=new-password hidden>
@@ -166,8 +177,8 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:min(320px,9
 #logo{display:block;justify-self:center;margin:0 0 10px;width:min(380px,84vw,46vh);height:auto;aspect-ratio:1}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
 input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em;text-align:center}a{color:#ff9900;text-align:center;font-size:14px}
-p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}</style>
-<main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command">
+p{margin:0;color:#9a8aa8;font-size:14px;text-align:center}/*STARS_CSS*/</style>
+<!--STARS--><main><img id=logo src=/static/sf-logo.png width=380 height=380 alt="Starfleet Command">
 <form id=f onsubmit="return go(event)" method=post action=/login/code><h1>TWO-STEP CODE</h1>
 <input id=c name=totp type=text placeholder="6-digit code" autofocus autocomplete=one-time-code inputmode=numeric aria-label="Authenticator code">
 <p>If your account does not use 2FA, leave this empty.</p>
@@ -180,6 +191,10 @@ const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'applica
 sessionStorage.removeItem('lcars-ticket');   // a ticket works once
 if(r.ok){location.href='/';return}
 location.replace('/login?denied='+(r.status==429?'429':'1'))}</script>"""
+
+
+LOGIN_PAGE = LOGIN_PAGE.replace("/*STARS_CSS*/", STARFIELD_CSS).replace("<!--STARS-->", STARFIELD)
+CODE_PAGE = CODE_PAGE.replace("/*STARS_CSS*/", STARFIELD_CSS).replace("<!--STARS-->", STARFIELD)
 
 
 @app.get("/login/code", response_class=HTMLResponse)
