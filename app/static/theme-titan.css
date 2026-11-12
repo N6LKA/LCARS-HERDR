@@ -85,7 +85,8 @@ html[data-theme=titan] .agent.here .nm small{color:#2a3a4a}
 html[data-theme=titan] .term .dot{border-radius:10px 0 0 10px}
 html[data-theme=titan] .foot .pill{border-radius:9px;text-align:left;padding-left:14px}
 html[data-theme=titan] .machine .cap{background:var(--mauve);border-radius:9px 0 0 9px}
-html[data-theme=titan] .machine .bar{background:var(--steel-d);color:var(--txt);border-radius:0 9px 9px 0;font-weight:400}
+/* like the wallpaper's MAGNATOMIC ARRAY tags: deep teal tag, bright cyan-white text */
+html[data-theme=titan] .machine .bar{background:#1d4a66;color:#d6f1ff;border-radius:0 9px 9px 0;font-weight:700;text-shadow:none}
 
 /* panes: black screens inside the frame */
 html[data-theme=titan] .pane{background:var(--scr);border:2px solid #39435a;border-radius:var(--rad)}
