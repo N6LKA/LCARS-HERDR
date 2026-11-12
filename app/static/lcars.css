@@ -220,7 +220,18 @@ dialog h3{margin:0 0 12px;color:var(--orange);letter-spacing:.2em}
 dialog label{display:grid;gap:4px;margin-bottom:10px;font-size:13px;color:var(--peach)}
 dialog label.chk{display:flex;align-items:center;gap:8px}
 dialog label.chk input{width:auto}
+#side-settings{display:none}
+@media (max-width:820px){#side-settings{display:block}}
 #mach-dlg{width:min(520px,94vw)}
+#sec-dlg{width:min(520px,94vw);max-height:90vh;overflow-y:auto}
+#sec-dlg section{border-top:2px solid #1c1c22;padding:10px 0 4px}
+#sec-dlg h4{margin:0 0 8px;color:var(--lilac);letter-spacing:.16em;font-size:14px}
+#sec-dlg p{margin:0 0 8px}
+#sec-dlg .row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+#sec-open{display:inline-block;text-decoration:none;margin:4px 0 10px}
+#sec-rc{font-family:var(--mono);color:var(--gold);background:#150f1c;border-radius:10px;padding:8px 12px;text-transform:none;letter-spacing:0;user-select:all;margin:4px 0}
+#sec-sessions{display:grid;gap:3px;margin-bottom:6px}
+#sec-dlg .dim{text-transform:none;letter-spacing:.02em}
 #mach-msg{margin:4px 0 8px;min-height:1.2em}#mach-msg.err{color:#ff7766;font-size:14px}
 dialog input{font:inherit;font-size:16px;letter-spacing:.04em;text-transform:none;padding:8px 10px;border:0;border-radius:12px;background:#1f1530;color:var(--tan);width:100%}
 dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-radius:16px}

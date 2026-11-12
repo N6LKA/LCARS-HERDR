@@ -15,3 +15,4 @@ conversations/
 conversations.json
 .devtools/
 node_modules/
+auth.json

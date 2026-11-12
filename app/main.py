@@ -6,7 +6,6 @@ every session stays alive when the page is closed.
 """
 import asyncio
 import base64
-import hashlib
 import hmac
 import json
 import logging
@@ -21,18 +20,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import agents, fs_git, machines
+from . import agents, auth, fs_git, machines
 from .core_client import CLOSE, DATA, FOCUS, RESIZE, Core, CoreClosed, CoreError
 
 log = logging.getLogger("lcars")
 
 STATIC = Path(__file__).parent / "static"
 TOKEN = os.environ.get("LCARS_TOKEN", "")
-# Nginx Proxy Manager already ran its Authelia check before forwarding a request for one of our
-# host names, so requests from these proxy addresses for these names count as logged in.
-# (NPM does not pass Authelia's Remote-User header through to the app, so we cannot rely on it.)
+# Addresses of the reverse proxy in front of us (Nginx Proxy Manager). They are NOT trusted to have logged anyone in; they
+# only tell us whose address to believe in X-Forwarded-For, for counting failed logins.
 TRUSTED_PROXIES = {p.strip() for p in os.environ.get("LCARS_TRUSTED_PROXIES", "").split(",") if p.strip()}
-PROXY_HOSTS = {h.strip().lower() for h in os.environ.get("LCARS_PROXY_HOSTS", "").split(",") if h.strip()}
 COOKIE = "lcars_session"
 MAX_UPLOAD = 8 * 1024 * 1024  # terminal.put accepts at most 8 MB raw
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
@@ -43,37 +40,19 @@ app.include_router(fs_git.router)
 app.include_router(machines.router)
 
 
-# ── auth ────────────────────────────────────────────────────────────────
-def _session_value() -> str:
-    return hashlib.sha256(("lcars-session:" + TOKEN).encode()).hexdigest()
-
-
-_failures: dict[str, list[float]] = {}
-
-
-def _login_blocked(ip: str) -> bool:
-    now = time.time()
-    recent = [t for t in _failures.get(ip, []) if now - t < 60]
-    _failures[ip] = recent
-    return len(recent) >= 5
-
-
-def _via_trusted_proxy(headers, client_host: str | None) -> bool:
-    if client_host not in TRUSTED_PROXIES or not headers.get("x-forwarded-for"):
-        return False
-    host = headers.get("host", "").split(":")[0].lower()
-    return bool(PROXY_HOSTS) and host in PROXY_HOSTS  # no host list configured = never trust
+# ── auth (see auth.py) ─────────────────────────────────────────────────
+def _client(headers, client_host):
+    return auth.client_ip(headers, client_host, TRUSTED_PROXIES)
 
 
 def _authorized(headers, cookies, client_host: str | None) -> bool:
-    if not TOKEN:
+    if not TOKEN and not auth.password_is_custom():
         return False  # never run open
-    if _via_trusted_proxy(headers, client_host):
+    if auth.session_ok(cookies.get(COOKIE, "")):
         return True
-    if hmac.compare_digest(cookies.get(COOKIE, ""), _session_value()):
-        return True
+    # a program on this machine itself may present the .env access code; nothing from outside can
     bearer = headers.get("authorization", "")
-    return bearer.startswith("Bearer ") and hmac.compare_digest(bearer[7:], TOKEN)
+    return auth.is_local(headers, client_host) and bearer.startswith("Bearer ") and hmac.compare_digest(bearer[7:], TOKEN)
 
 
 def _same_origin(headers) -> bool:
@@ -88,7 +67,7 @@ def _same_origin(headers) -> bool:
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/api/login"):
+    if path in ("/login", "/api/login", "/api/login/info"):
         return await call_next(request)
     if not _authorized(request.headers, request.cookies, request.client.host if request.client else None):
         if path.startswith("/api/"):
@@ -104,21 +83,25 @@ async def guard(request: Request, call_next):
 
 
 LOGIN_PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>LCARS</title><style>
+<meta name=color-scheme content=dark><meta name=darkreader-lock><title>LCARS</title><style>
+:root{color-scheme:dark}
 body{background:#000;color:#ff9900;font-family:Antonio,Arial,sans-serif;display:grid;place-items:center;height:100vh;margin:0}
 form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;letter-spacing:.2em;font-size:20px}
 input,button{font:inherit;padding:12px;border:0;border-radius:18px;background:#ff9900;color:#000}
-input{background:#1a1224;color:#ffcc99}</style>
+input{background:#1a1224;color:#ffcc99}#m{color:#ff7766;min-height:1.2em}</style>
 <form onsubmit="return go(event)"><h1>LCARS ACCESS</h1>
-<input id=t type=password placeholder="Access code" autofocus autocomplete=current-password>
+<input id=t type=password placeholder="Password" autofocus autocomplete=current-password>
+<input id=c placeholder="Authenticator code or recovery code" autocomplete=one-time-code inputmode=numeric hidden>
 <button>AUTHORIZE</button><div id=m></div></form>
-<script>async function go(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',
-headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value})});
-if(r.ok)location.href='/';else m.textContent=r.status==429?'Too many attempts':'Access denied';return false}</script>"""
+<script>fetch('/api/login/info').then(r=>r.json()).then(j=>{if(j.code)c.hidden=false}).catch(()=>{});
+async function go(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',
+headers:{'content-type':'application/json'},body:JSON.stringify({token:t.value,code:c.value})});
+if(r.ok)location.href='/';else m.textContent=r.status==429?'Too many attempts. Wait a few minutes.':'Access denied';return false}</script>"""
 
 
 class LoginBody(BaseModel):
     token: str
+    code: str = ""
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -126,20 +109,97 @@ async def login_page():
     return LOGIN_PAGE
 
 
+@app.get("/api/login/info")
+async def login_info():
+    return {"code": auth.two_factor_on()}
+
+
 @app.post("/api/login")
 async def login(body: LoginBody, request: Request):
-    ip = request.client.host if request.client else "?"
+    host = request.client.host if request.client else None
+    ip = _client(request.headers, host)
     if not _same_origin(request.headers):
         return JSONResponse({"error": "cross-origin request refused"}, status_code=403)
-    if _login_blocked(ip):
+    local = auth.is_local(request.headers, host)
+    if not local and auth.blocked(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
-    if not TOKEN or not hmac.compare_digest(body.token, TOKEN):
-        _failures.setdefault(ip, []).append(time.time())
+    sid = auth.login(body.token, body.code, TOKEN, ip, request.headers.get("user-agent", ""), local)
+    if not sid:
+        await asyncio.sleep(1)           # slows guessing a little more
         return JSONResponse({"error": "denied"}, status_code=401)
     secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(COOKIE, _session_value(), httponly=True, samesite="strict", secure=secure, max_age=30 * 86400)
+    resp.set_cookie(COOKIE, sid, httponly=True, samesite="strict", secure=secure, max_age=auth.SESSION_MAX)
     return resp
+
+
+# ── account: password, 2FA, sessions ───────────────────────────────────
+class PwBody(BaseModel):
+    current: str
+    new: str
+
+
+class CodeBody(BaseModel):
+    code: str = ""
+
+
+def _sid(request: Request) -> str:
+    return request.cookies.get(COOKIE, "")
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    return auth.status(_sid(request))
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    auth.logout(_sid(request))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(COOKIE)
+    return resp
+
+
+@app.post("/api/auth/logout-others")
+async def auth_logout_others(request: Request):
+    auth.logout(_sid(request), others=True)
+    return {"ok": True}
+
+
+def _guarded(request: Request, fn, *a):
+    """Account changes count wrong guesses like a login does, so a stolen session cannot be used to guess the password."""
+    host = request.client.host if request.client else None
+    ip = _client(request.headers, host)
+    if not auth.is_local(request.headers, host) and auth.blocked(ip):
+        raise HTTPException(429, "too many attempts")
+    try:
+        return fn(*a)
+    except ValueError as e:
+        auth._fail(ip)
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/auth/password")
+async def auth_password(body: PwBody, request: Request):
+    host = request.client.host if request.client else None
+    _guarded(request, auth.change_password, body.current, body.new, TOKEN, auth.is_local(request.headers, host), _sid(request))
+    return {"ok": True}
+
+
+@app.post("/api/auth/totp/begin")
+async def totp_begin(request: Request):
+    return _guarded(request, auth.totp_begin)
+
+
+@app.post("/api/auth/totp/confirm")
+async def totp_confirm(body: CodeBody, request: Request):
+    return {"recovery": _guarded(request, auth.totp_confirm, body.code)}
+
+
+@app.post("/api/auth/totp/disable")
+async def totp_disable(body: CodeBody, request: Request):
+    _guarded(request, auth.totp_disable, body.code)
+    return {"ok": True}
 
 
 # ── core access ─────────────────────────────────────────────────────────
