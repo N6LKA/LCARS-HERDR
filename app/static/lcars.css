@@ -381,3 +381,9 @@ body.wco #top button,body.wco #tabs,body.wco #elbow button,body.wco #topbar-fill
   #pstrip .ps[data-state=blocked] .d{animation:pulse .9s infinite}
   .pane-h [data-a=zoom]{display:none}
 }
+
+/* dictation */
+.mic-btn.live{background:var(--red)!important;color:#fff!important;animation:pulse 1.2s infinite}
+#keybar .mic-btn[hidden]{display:none}
+#dictate{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:12;max-width:min(80%,640px);padding:6px 16px;border-radius:16px;background:#000c;border:2px solid var(--red);color:var(--tan);font-size:15px;text-transform:none;letter-spacing:.02em;pointer-events:none}
+#dictate[hidden]{display:none}

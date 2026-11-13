@@ -255,6 +255,63 @@ function adoptHelpers() {   // a terminal started by one of our panes opens besi
   }
   if (changed) saveLayout();
 }
+// ── dictation: a mic button turns speech into text typed at the focused pane ─────────────────────
+// Uses the browser's speech recognition, and only in its on-device mode: the audio stays in this browser (Chrome and Edge
+// fetch a language pack once). Where that mode does not exist the buttons stay hidden, so nothing is ever sent to a cloud
+// recognizer behind your back.
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const dictation = { on: false, rec: null, starting: false };
+const dictLang = () => localStorage.getItem('lcars-dictation-lang') || navigator.language || 'en-US';
+function dictUi() {
+  document.body.classList.toggle('dictating', dictation.on);
+  for (const b of document.querySelectorAll('.mic-btn')) { b.classList.toggle('live', dictation.on); b.textContent = dictation.on ? 'MIC ON' : 'MIC'; b.setAttribute('aria-pressed', dictation.on); }
+  if (!dictation.on) { $('#dictate').hidden = true; $('#dictate').textContent = ''; }
+}
+function dictStop(why) {
+  dictation.on = false; dictation.starting = false;
+  try { dictation.rec && dictation.rec.stop(); } catch {}
+  dictation.rec = null; dictUi(); if (why) toast(why, true);
+}
+function dictSend(text) {
+  const p = P.get(S.focus); if (!p || !text) return;
+  p.term.paste(text.replace(/\s+/g, ' ').trim() + ' ');
+}
+async function dictStart() {
+  if (dictation.on || dictation.starting) return;
+  dictation.starting = true;
+  const langs = [dictLang()];
+  try {
+    if (typeof SpeechRec.available !== 'function') throw new Error('This browser cannot recognize speech on the device, so dictation is off (it would have to send your voice to a cloud service)');
+    let st = await SpeechRec.available({ langs, processLocally: true });
+    if (st === 'unavailable') throw new Error(`On-device speech recognition is not available for ${langs[0]} in this browser`);
+    if (st !== 'available') {
+      if (st === 'downloadable' && !confirm(`Dictation needs a speech language pack (${langs[0]}, about 60 MB). The browser downloads it once and then recognizes speech on this computer.\n\nDownload it now?`)) { dictation.starting = false; return; }
+      toast('DOWNLOADING THE SPEECH PACK…');
+      if (typeof SpeechRec.install === 'function') await SpeechRec.install({ langs, processLocally: true });
+      st = await SpeechRec.available({ langs, processLocally: true });
+      if (st !== 'available') throw new Error('The speech pack is not ready yet, try again in a minute');
+    }
+  } catch (e) { dictation.starting = false; return toast(e.message || String(e), true); }
+  const rec = new SpeechRec();
+  rec.lang = langs[0]; rec.continuous = true; rec.interimResults = true; rec.processLocally = true;
+  rec.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) dictSend(r[0].transcript); else interim += r[0].transcript;
+    }
+    const d = $('#dictate'); d.textContent = interim; d.hidden = !interim;
+  };
+  rec.onerror = ev => {
+    if (ev.error === 'no-speech' || ev.error === 'aborted') return;
+    dictStop(ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'The browser blocked the microphone. Allow it for this site and try again' : `Dictation stopped: ${ev.error}`);
+  };
+  rec.onend = () => { if (dictation.on && dictation.rec === rec) { try { rec.start(); } catch { dictStop('Dictation stopped'); } } };   // it stops by itself after a pause: carry on
+  dictation.rec = rec; dictation.on = true; dictation.starting = false;
+  try { rec.start(); } catch (e) { return dictStop(e.message || 'Could not start the microphone'); }
+  dictUi(); toast('LISTENING · TEXT GOES TO THE FOCUSED PANE');
+}
+const dictToggle = () => (dictation.on ? dictStop() : dictStart());
 function stuckTick() {   // being stuck is a matter of time passing, not of an event, so look again now and then
   let changed = false;
   for (const t of S.terms.values()) { const now = stateOf(t), was = S.prev.get(t.address); if (was !== now) { statusChanged(t, was, now); S.prev.set(t.address, now); changed = true; } }
@@ -523,6 +580,7 @@ def('space.close', 'Close space', id => closeSpace(typeof id === 'string' ? id :
 def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
 def('space.prev', 'Previous space', () => stepSpace(-1), 'Spaces');
 def('pane.new_claude', 'New Claude beside this pane', () => openBeside('claude', { cwd: cwdOf(S.focus) }), 'Panes');
+def('app.dictate', 'Dictation on / off (microphone)', () => SpeechRec ? dictToggle() : toast('This browser has no speech recognition', true), 'App');
 def('pane.new_claude_named', 'New Claude with a session name…', () => newClaudeNamed('pane'), 'Panes');
 def('pane.resume_claude', 'Resume an earlier Claude conversation…', () => resumeClaude('pane'), 'Panes');
 def('tab.resume_claude', 'New tab: resume a Claude conversation…', () => resumeClaude('tab'), 'Tabs');
@@ -568,7 +626,7 @@ for (let n = 1; n <= 9; n++) {
  ['ctrl+shift+question', 'app.help'], ['ctrl+question', 'app.help'], ['f1', 'app.help'],
  ['ctrl+shift+b', 'layout.toggle_sidebar'], ['ctrl+shift+n', 'space.new'], ['ctrl+alt+n', 'space.new'],
  ['ctrl+shift+t', 'tab.new'], ['ctrl+alt+t', 'tab.new'], ['ctrl+shift+w', 'tab.close'], ['ctrl+alt+w', 'tab.close'],
- ['ctrl+shift+p', 'app.palette'], ['ctrl+shift+k', 'app.picker'], ['ctrl+alt+k', 'app.picker'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
+ ['ctrl+shift+p', 'app.palette'], ['ctrl+alt+m', 'app.dictate'], ['ctrl+shift+k', 'app.picker'], ['ctrl+alt+k', 'app.picker'], ['ctrl+alt+p', 'app.palette'], ['ctrl+shift+o', 'pane.split_right'], ['ctrl+shift+e', 'pane.split_down'],
  ['ctrl+shift+x', 'pane.close'], ['ctrl+shift+z', 'pane.zoom'], ['f2', 'tab.rename'], ['ctrl+alt+r', 'pane.rename'], ['shift+f2', 'space.rename'], ['ctrl+shift+c', 'terminal.copy'],
 ].forEach(([k, c]) => bind(k, c));
 const KEYNAME = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', PageUp: 'pageup', PageDown: 'pagedown', Tab: 'tab', Escape: 'esc', Enter: 'enter', ' ': 'space',
@@ -1376,6 +1434,7 @@ function init() {
   const stuckLbl = () => { const m = stuckMin(); $('#stuck-btn').textContent = m ? `STUCK ${m}M` : 'STUCK OFF'; };
   $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); };
   stuckLbl();
+  document.querySelectorAll('.mic-btn').forEach(b => { b.hidden = !(SpeechRec && typeof SpeechRec.available === 'function'); b.onclick = dictToggle; });
   $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeClaude('pane'); };
   $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
   $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });

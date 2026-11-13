@@ -38,7 +38,7 @@
     <button id="side-show" title="Show the sidebar (Ctrl+Shift+B)" aria-label="Show sidebar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <div id="tabs" role="tablist"></div>
     <button class="pill peach" id="tab-add" title="New tab">+</button>
-    <div id="topbar-fill"><span id="top-info"></span><button id="btn-files" class="tbtn" title="Files (Ctrl+Alt+F)">FILES</button><button id="btn-changes" class="tbtn" title="Git changes (Ctrl+Alt+G)">CHANGES</button><button id="btn-settings" class="tbtn" title="Account: password, 2FA, sessions" aria-label="Settings">SETTINGS</button><button id="btn-logout" class="tbtn" title="Sign out of LCARS" aria-label="Sign out">SIGN OUT</button></div>
+    <div id="topbar-fill"><span id="top-info"></span><button id="btn-mic" class="tbtn mic-btn" hidden title="Dictation: speak and the text is typed at the focused pane (Ctrl+Alt+M)">MIC</button><button id="btn-files" class="tbtn" title="Files (Ctrl+Alt+F)">FILES</button><button id="btn-changes" class="tbtn" title="Git changes (Ctrl+Alt+G)">CHANGES</button><button id="btn-settings" class="tbtn" title="Account: password, 2FA, sessions" aria-label="Settings">SETTINGS</button><button id="btn-logout" class="tbtn" title="Sign out of LCARS" aria-label="Sign out">SIGN OUT</button></div>
     <span id="top-cap"></span>
   </header>
 
@@ -82,6 +82,7 @@
   <main id="main">
     <div id="mainc">
       <div id="pstrip" hidden aria-label="Panes in this tab"></div>
+      <div id="dictate" hidden aria-live="polite"></div>
       <div id="panes"></div>
       <div id="empty">
         <h2>THIS TAB IS EMPTY</h2>
@@ -90,7 +91,7 @@
       <div id="keybar" aria-label="Touch keys">
         <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
         <button data-k="ctrl-c">^C</button><button data-k="up">▲</button><button data-k="down">▼</button>
-        <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="enter">⏎</button>
+        <button data-k="left">◀</button><button data-k="right">▶</button><button data-k="enter">⏎</button><button class="mic-btn" id="mic-key" hidden>MIC</button>
       </div>
     </div>
     <div id="pdiv" hidden title="Drag to resize · double-click to reset"></div>
