@@ -751,10 +751,20 @@ function spaceMenu(e, id) {
 const setFocusQuiet = addr => { S.focus = addr; for (const [a, q] of P) q.el.classList.toggle('focus', a === addr); if (markViewed()) render(); };
 window.addEventListener('focus', () => { if (markViewed()) render(); });
 document.addEventListener('visibilitychange', () => { if (markViewed()) render(); });
+// Put text on the clipboard: the clipboard API where the browser allows it, else a temporary text box (plain http, or a write
+// the browser refuses because it did not come from a click or key press).
+async function writeClip(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false; try { ok = document.execCommand('copy'); } catch {}
+  ta.remove(); const p = P.get(S.focus); if (p) p.term.focus();
+  return ok;
+}
 async function copySel() {
   const p = P.get(S.focus); const t = p && p.term.getSelection();
   if (!t) return toast('Nothing selected');
-  try { await navigator.clipboard.writeText(t); toast('COPIED'); } catch { toast('Copy needs a secure page (https)', true); }
+  (await writeClip(t)) ? toast('COPIED') : toast('Copy failed: allow clipboard access for this site', true);
 }
 async function pasteClip() {
   const p = P.get(S.focus); if (!p) return;
@@ -948,7 +958,29 @@ class Pane {
     try { const gl = new WebglAddon.WebglAddon(); gl.onContextLoss(() => gl.dispose()); this.term.loadAddon(gl); this.gpu = true; } catch { this.gpu = false; }
     // Ctrl+V / Cmd+V must stay a browser paste. If xterm turns it into a Ctrl+V key for the program, the program looks for
     // an image on the SERVER's clipboard ("no image in the clipboard") and the browser never gets to paste your screenshot.
-    this.term.attachCustomKeyEventHandler(ev => !(ev.type === 'keydown' && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === 'v'));
+    // Ctrl+C (Cmd+C) with text selected copies it, as in Windows Terminal; with nothing selected it still interrupts the program.
+    // Ctrl+Insert copies too. (Ctrl+Shift+C is the command above, but some browsers keep that one for themselves.)
+    this.term.attachCustomKeyEventHandler(ev => {
+      if (ev.type !== 'keydown') return true;
+      const k = ev.key.toLowerCase();
+      if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && k === 'v') return false;
+      if (this.term.hasSelection() && !ev.altKey && ((((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && k === 'c')) || (ev.ctrlKey && k === 'insert'))) {
+        ev.preventDefault(); const t = this.term.getSelection();
+        writeClip(t).then(ok => { toast(ok ? 'COPIED' : 'Copy failed: allow clipboard access for this site', !ok); if (ok) this.term.clearSelection(); });
+        return false;
+      }
+      return true;
+    });
+    // A program that selects text itself (Claude's full-screen mode, tmux, vim) asks the terminal to set the clipboard with the
+    // OSC 52 escape. Without this handler that request was dropped, so what you selected in Claude never reached the clipboard.
+    this.term.parser.registerOscHandler(52, data => {
+      const i = data.indexOf(';'), b64 = i >= 0 ? data.slice(i + 1) : '';
+      if (!b64 || b64 === '?') return true;                                     // a read request: never hand the clipboard to a program
+      let text; try { text = new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); } catch { return true; }
+      if (text.length > 1e6) return true;
+      writeClip(text).then(ok => toast(ok ? 'COPIED' : 'Copy failed: allow clipboard access for this site', !ok));
+      return true;
+    });
     this.term.onData(d => this.send({ type: 'input', data: d }));
     this.term.onBinary(b => { if (this.ws && this.ws.readyState === 1) this.ws.send(Uint8Array.from(b, c => c.charCodeAt(0))); });
     this.term.onResize(({ cols, rows }) => this.send({ type: 'resize', cols, rows }));
