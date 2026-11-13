@@ -125,9 +125,15 @@ function removeLeaf(n, addr) {
   if (!n) return null;
   if (isLeaf(n)) return n.a === addr ? null : n;
   const c = [], w = [];
-  n.c.forEach((x, i) => { const r = removeLeaf(x, addr); if (r) { c.push(r); w.push(n.w[i]); } });
+  let gone = -1, freed = 0;
+  n.c.forEach((x, i) => {
+    const r = removeLeaf(x, addr);
+    if (r) { c.push(r); w.push(n.w[i]); }
+    else { gone = c.length; freed += n.w[i]; }   // the slot a removed child leaves: its neighbour takes the room
+  });
   if (!c.length) return null;
   if (c.length === 1) return c[0];
+  if (gone >= 0) w[gone > 0 ? gone - 1 : 0] += freed;   // the one before it (or the one after, if it was first)
   const sum = w.reduce((a, b) => a + b, 0);
   return { ...n, c, w: w.map(x => x * c.length / sum) };
 }
