@@ -891,7 +891,15 @@ class Pane {
   touchScroll() {
     let y0 = null, last = 0, lastT = 0, v = 0, moved = false, rest = 0, raf = 0;
     const lineH = () => Math.max(8, this.body.querySelector('.xterm-screen').getBoundingClientRect().height / this.term.rows);
-    const scroll = dy => { rest += dy / lineH(); const n = Math.trunc(rest); if (n) { rest -= n; this.term.scrollLines(-n); } };
+    // A full-screen program (Claude's own renderer) has no scrollback here: it keeps its history itself and scrolls when it
+    // is sent mouse-wheel reports. So over there the swipe is turned into wheel steps for the terminal to pass on.
+    const scroll = dy => {
+      rest += dy / lineH(); const n = Math.trunc(rest); if (!n) return; rest -= n;
+      if (this.term.buffer.active.type === 'alternate' && this.term.modes.mouseTrackingMode !== 'none') {
+        const el = this.body.querySelector('.xterm-screen'), r = el.getBoundingClientRect();
+        for (let i = 0; i < Math.abs(n); i++) el.dispatchEvent(new WheelEvent('wheel', { deltaY: n > 0 ? -1 : 1, deltaMode: 1, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, bubbles: true, cancelable: true }));
+      } else this.term.scrollLines(-n);
+    };
     this.body.addEventListener('touchstart', ev => {
       cancelAnimationFrame(raf);
       if (ev.touches.length !== 1) { y0 = null; return; }
