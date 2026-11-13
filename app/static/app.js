@@ -260,7 +260,7 @@ function adoptHelpers() {   // a terminal started by one of our panes opens besi
 // fetch a language pack once). Where that mode does not exist the buttons stay hidden, so nothing is ever sent to a cloud
 // recognizer behind your back.
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-const dictation = { on: false, rec: null, starting: false };
+const dictation = { on: false, rec: null, starting: false, trail: false, addr: null };
 const dictLang = () => localStorage.getItem('lcars-dictation-lang') || navigator.language || 'en-US';
 function dictUi() {
   document.body.classList.toggle('dictating', dictation.on);
@@ -268,13 +268,33 @@ function dictUi() {
   if (!dictation.on) { $('#dictate').hidden = true; $('#dictate').textContent = ''; }
 }
 function dictStop(why) {
-  dictation.on = false; dictation.starting = false;
+  dictation.on = false; dictation.starting = false; dictation.trail = false;
   try { dictation.rec && dictation.rec.stop(); } catch {}
   dictation.rec = null; dictUi(); if (why) toast(why, true);
 }
+// The recognizer does not write punctuation, so the spoken words are turned into marks here ("period" -> ".").
+// "press enter" presses Enter (it submits the prompt).
+const SPOKEN = [[/\s*\b(?:period|full stop)\b[.,!?]?/gi, '.'], [/\s*\bcomma\b[.,!?]?/gi, ','], [/\s*\bquestion mark\b[.,!?]?/gi, '?'],
+  [/\s*\bexclamation (?:point|mark)\b[.,!?]?/gi, '!'], [/\s*\bsemicolon\b[.,!?]?/gi, ';'], [/\s*\bcolon\b[.,!?]?/gi, ':']];
+function dictFormat(text) {   // -> pieces: strings to type, and { enter: true } where Enter is to be pressed
+  const out = [], segs = text.split(/\s*\bpress enter\b[.,!?]?/i);
+  segs.forEach((seg, i) => {
+    let t = seg; for (const [re, mark] of SPOKEN) t = t.replace(re, mark);
+    t = t.replace(/\s+/g, ' ').trim(); if (t) out.push(t);
+    if (i < segs.length - 1) out.push({ enter: true });
+  });
+  return out;
+}
 function dictSend(text) {
   const p = P.get(S.focus); if (!p || !text) return;
-  p.term.paste(text.replace(/\s+/g, ' ').trim() + ' ');
+  if (dictation.addr !== S.focus) dictation.trail = false;   // a different pane: nothing of ours to tidy up
+  const parts = dictFormat(text);
+  parts.forEach((x, i) => {
+    if (x.enter) { p.send({ type: 'input', data: '\r' }); dictation.trail = false; return; }
+    if (dictation.trail && /^[.,?!:;]/.test(x)) p.send({ type: 'input', data: '\x7f' });   // the mark goes straight after the word, not after our space
+    const submit = parts[i + 1] && parts[i + 1].enter;
+    p.term.paste(submit ? x : x + ' '); dictation.trail = !submit; dictation.addr = S.focus;
+  });
 }
 async function dictStart() {
   if (dictation.on || dictation.starting) return;
