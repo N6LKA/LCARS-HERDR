@@ -274,10 +274,11 @@ function dictStop(why) {
 }
 // The recognizer does not write punctuation, so the spoken words are turned into marks here ("period" -> ".").
 // "press enter" presses Enter (it submits the prompt).
-const SPOKEN = [[/\s*\b(?:period|full stop)\b[.,!?]?/gi, '.'], [/\s*\bcomma\b[.,!?]?/gi, ','], [/\s*\bquestion mark\b[.,!?]?/gi, '?'],
-  [/\s*\bexclamation (?:point|mark)\b[.,!?]?/gi, '!'], [/\s*\bsemicolon\b[.,!?]?/gi, ';'], [/\s*\bcolon\b[.,!?]?/gi, ':']];
+// The engine may hand these back already wrapped in braces ("{comma}" or even "{,}"): braces and brackets are swallowed too.
+const W = w => new RegExp('\\s*(?:[{\\[(]\\s*)?\\b' + w + '\\b(?:\\s*[}\\])])?[.,!?]?', 'gi');
+const SPOKEN = [[W('(?:period|full stop)'), '.'], [W('comma'), ','], [W('question mark'), '?'], [W('exclamation (?:point|mark)'), '!'], [W('semicolon'), ';'], [W('colon'), ':']];
 function dictFormat(text) {   // -> pieces: strings to type, and { enter: true } where Enter is to be pressed
-  const out = [], segs = text.split(/\s*\bpress enter\b[.,!?]?/i);
+  const out = [], segs = text.replace(/\s*[{\[(]\s*([.,?!:;])\s*[}\])]/g, '$1').split(W('press enter'));
   segs.forEach((seg, i) => {
     let t = seg; for (const [re, mark] of SPOKEN) t = t.replace(re, mark);
     t = t.replace(/\s+/g, ' ').trim(); if (t) out.push(t);
