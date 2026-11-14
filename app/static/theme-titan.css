@@ -18,8 +18,8 @@ html[data-theme=titan] ::-webkit-scrollbar{width:9px;height:9px}
 html[data-theme=titan] ::-webkit-scrollbar-thumb{background:var(--steel);border-radius:5px}
 html[data-theme=titan] ::-webkit-scrollbar-track{background:transparent}
 
-/* the whole console is one slate frame around black screens */
-html[data-theme=titan] #app{height:calc(100dvh - 16px);background:linear-gradient(180deg,#303850 0,#262d3f 100%);border-radius:30px;padding:10px;gap:8px;box-shadow:inset 0 0 0 2px #3b4560}
+/* black background all round, like the wallpaper: only the rails, buttons and tags are coloured */
+html[data-theme=titan] #app{height:calc(100dvh - 16px);background:#000;border-radius:30px;padding:10px;gap:8px}
 html[data-theme=titan] body.wco #app{height:100dvh;border-radius:0}
 
 html[data-theme=titan] #elbow{background:var(--steel);border-radius:34px 0 0 0;color:var(--ink)}
