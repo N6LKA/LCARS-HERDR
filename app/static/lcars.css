@@ -178,6 +178,8 @@ body.no-panes #empty{display:grid}
 .pane-h .title{flex:1;min-width:0;height:100%;display:flex;align-items:center;padding:0 10px;background:var(--hdr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--hdrtext)}
 .pane-h .sn{flex:none;align-self:center;font-size:13px;font-weight:700;letter-spacing:.08em;padding:1px 8px;border-radius:9px;background:#ffffff1f;color:var(--hdrtext);text-transform:none}
 .pane-h .sn[hidden]{display:none}
+/* the terminal's real address as a small code at the right of the title; it is clipped away when the header is too narrow */
+.pane-h .title::after{content:attr(data-code);margin-left:auto;padding-left:10px;font-size:11px;font-weight:400;letter-spacing:.16em;text-transform:uppercase;color:inherit;opacity:.6}
 .pane.focus .pane-h .title{background:var(--orange)}
 .pane.blocked .pane-h .title{background:var(--red)}
 .pane.focus .pane-h .title,.pane.blocked .pane-h .title{color:#000}
