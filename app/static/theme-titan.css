@@ -102,8 +102,9 @@ html[data-theme=titan] .machine .bar{background:#1d4a66;color:#d6f1ff;border-rad
 
 /* panes: black screens inside the frame */
 html[data-theme=titan] .pane{background:var(--scr);border:2px solid #39435a;border-radius:var(--rad)}
-html[data-theme=titan] .pane.focus{border-color:var(--blue);box-shadow:0 0 0 1px #7396b244,0 0 18px #5fc3e826}
-html[data-theme=titan] .pane.blocked{border-color:var(--coral)}
+/* the active pane is traced by the wallpaper's thin red line; a blocked pane keeps the lighter coral and pulses */
+html[data-theme=titan] .pane.focus{border-color:#e8452c;box-shadow:0 0 12px #e8452c2e}
+html[data-theme=titan] .pane.blocked{border-color:var(--coral);box-shadow:0 0 0 1px #ff6f5e55}
 html[data-theme=titan] .pane-h{background:var(--steel-dd);height:30px;gap:6px;padding-right:6px}
 html[data-theme=titan] .pane-h .cap{width:16px;background:var(--c,var(--s-live));border-radius:0}
 html[data-theme=titan] .pane-h .title{background:none;color:var(--txt2);font-weight:400;letter-spacing:.16em}
@@ -179,3 +180,7 @@ html[data-theme=titan] .chead .cnt{background:var(--blue);color:var(--ink);borde
 html[data-theme=titan] .chead .br{color:var(--cyan)}
 html[data-theme=titan] .clist{border-bottom-color:#39435a}
 html[data-theme=titan] .pill.small{border-radius:8px}
+
+/* small catalogue codes, like STN.11 and JM-138 on the wallpaper's steel panels: the terminal's address in each pane header */
+html[data-theme=titan] .pane-h .title::after{content:attr(data-code);margin-left:auto;padding-left:10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt2);opacity:.75}
+html[data-theme=titan] .pane.focus .pane-h .title::after{color:var(--peach);opacity:.8}

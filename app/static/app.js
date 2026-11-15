@@ -938,7 +938,7 @@ class Pane {
     this.addr = addr; this.ws = null; this.dead = false; this.ended = false; this.retry = 0;
     this.el = document.createElement('div');
     this.el.className = 'pane'; this.el.dataset.addr = addr;
-    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title"></span><span class="sn" title="Session name: other agents reach this one with hc send"></span><span class="st"></span>${TRICORDER}
+    this.el.innerHTML = `<div class="pane-h"><span class="cap"></span><span class="title" data-code="${addr}"></span><span class="sn" title="Session name: other agents reach this one with hc send"></span><span class="st"></span>${TRICORDER}
       <button data-a="split_right" title="Split right">SPLIT R</button><button data-a="split_down" title="Split down">SPLIT D</button>
       <button data-a="zoom" title="Zoom">ZOOM</button><button data-a="file" title="Send a file">FILE</button>
       <button data-a="close" class="close" title="Close pane (ends its terminal)">CLOSE</button></div>
