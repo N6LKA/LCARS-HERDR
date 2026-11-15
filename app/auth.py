@@ -129,7 +129,7 @@ def otpauth_uri(secret: str, user: str = "lcars") -> str:
     return f"otpauth://totp/{ISSUER}:{user}?secret={secret}&issuer={ISSUER}&algorithm=SHA1&digits=6&period=30"
 
 
-PREF_CHOICES = {"theme": ("tng", "picard", "titan")}          # the preferences a user may keep on their account, and their allowed values
+PREF_CHOICES = {"theme": ("tng", "picard", "titan"), "clock": ("12", "24")}          # the preferences a user may keep on their account, and their allowed values
 
 
 def set_pref(user: str, key: str, value: str) -> None:

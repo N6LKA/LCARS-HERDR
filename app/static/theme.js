@@ -18,15 +18,35 @@
     mark();
   }
   const saveToAccount = t => fetch('/api/auth/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: t }) }).catch(() => {});
+  const saveClock = v => fetch('/api/auth/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clock: v }) }).catch(() => {});
   window.lcarsTheme = { apply, cur };
+  // 12 or 24 hour clock: kept in this browser and, like the look, in the account
+  const CK = 'lcars-clock';
+  const clockGet = () => { try { return localStorage.getItem(CK) === '24' ? '24' : '12'; } catch { return '12'; } };
+  function clockMark() {
+    document.querySelectorAll('#sec-clock button').forEach(b => {
+      const on = b.dataset.clock === clockGet(); b.setAttribute('aria-pressed', on);
+      b.textContent = (on ? '\u2713 ' : '') + (b.dataset.label || b.textContent.replace('\u2713 ', ''));
+    });
+  }
+  function clockApply(v) {
+    if (v !== '12' && v !== '24') return;
+    try { localStorage.setItem(CK, v); } catch {}
+    window.dispatchEvent(new CustomEvent('lcars-clock', { detail: v })); clockMark();
+  }
+  window.lcarsClock = { get: clockGet, apply: clockApply };
   // follow the account's choice (set on another device), or hand it this browser's choice if the account has none yet
   fetch('/api/auth/status').then(r => r.ok ? r.json() : null).then(s => {
     if (!s || !s.user) return;
     const t = s.prefs && s.prefs.theme;
     if (t && t !== cur()) apply(t); else if (!t && cur() !== 'tng') saveToAccount(cur());
+    const c = s.prefs && s.prefs.clock;
+    if (c && c !== clockGet()) clockApply(c); else if (!c && clockGet() === '24') saveClock('24');
   }).catch(() => {});
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#sec-themes button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { apply(b.dataset.theme); saveToAccount(b.dataset.theme); }; });
     mark();
+    document.querySelectorAll('#sec-clock button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { clockApply(b.dataset.clock); saveClock(b.dataset.clock); }; });
+    clockMark();
   });
 })();

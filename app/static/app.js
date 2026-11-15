@@ -1512,7 +1512,8 @@ function init() {
   document.querySelectorAll('dialog button[value=cancel]').forEach(b => { b.type = 'button'; b.onclick = () => b.closest('dialog').close('cancel'); });
   setInterval(renderAgents, 30000);
   setInterval(stuckTick, 30000);
-  setInterval(() => { $('#f-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
+  const tickClock = () => { const h24 = window.lcarsClock && window.lcarsClock.get() === '24'; $('#f-clock').textContent = new Date().toLocaleTimeString([], h24 ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } : { hour: '2-digit', minute: '2-digit', hour12: true }); };
+  setInterval(tickClock, 1000); tickClock(); window.addEventListener('lcars-clock', tickClock);
   document.addEventListener('paste', ev => {   // an image pasted anywhere goes to the focused terminal
     const files = [...(ev.clipboardData ? ev.clipboardData.files : [])], p = P.get(S.focus);
     if (files.length && p && !p.el.contains(ev.target)) { ev.preventDefault(); p.sendFiles(files); }

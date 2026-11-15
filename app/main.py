@@ -319,6 +319,7 @@ def _guarded(request: Request, fn, *a):
 
 class PrefsBody(BaseModel):
     theme: str = ""
+    clock: str = ""
 
 
 @app.post("/api/auth/prefs")
@@ -327,6 +328,8 @@ async def auth_prefs(body: PrefsBody, request: Request):
     try:
         if body.theme:
             auth.set_pref(me, "theme", body.theme)
+        if body.clock:
+            auth.set_pref(me, "clock", body.clock)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"ok": True}
