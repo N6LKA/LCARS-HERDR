@@ -1563,7 +1563,10 @@ function init() {
   const stuckLbl = () => { const m = stuckMin(); $('#stuck-btn').textContent = m ? `STUCK ${m}M` : 'STUCK OFF'; };
   $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); };
   stuckLbl();
-  document.querySelectorAll('.mic-btn').forEach(b => { b.hidden = !(SpeechRec && typeof SpeechRec.available === 'function'); b.onclick = dictToggle; });
+  document.querySelectorAll('.mic-btn').forEach(b => { b.hidden = !(SpeechRec && typeof SpeechRec.available === 'function'); // the button must not take the keyboard focus from the pane: dictation types into the focused pane
+    b.addEventListener('mousedown', ev => ev.preventDefault());
+    b.onclick = () => { dictToggle(); if (S.focus) focusPane(S.focus); };
+  });
   $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeDefault('pane'); };
   $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
   $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });
