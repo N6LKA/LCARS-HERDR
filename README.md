@@ -1,5 +1,7 @@
 # LCARS
 
+![License](https://img.shields.io/badge/License-GPLv3-lightgrey)
+
 A Star Trek LCARS-styled web console for the coding-agent terminals running on a server. Open it in any browser, on a
 desktop or a phone, and work with Claude Code, GitHub Copilot, Codex and other agents in real terminals that keep running
 when you close the page.
@@ -174,7 +176,14 @@ trust, keep 2FA on, and never expose it directly to the internet. Put it behind 
 VPN or an authenticating proxy. Keep each agent's own approval prompts on. Accounts are kept in `auth.json` (mode 600) as
 password hashes; sessions are stored hashed and can be revoked in Settings.
 
-## Credits and licences
+## Licence
+
+GPLv3 © 2026 Larry Aycock (N6LKA)
+
+This software is free and open source. You may use, modify and redistribute it, but derivative works must remain open source
+under the same licence. See [LICENSE](LICENSE) for details.
+
+## Credits and third-party licences
 
 - The look is inspired by the Herdr app's own Star Trek layouts: the **Bridge** layout in
   [eiwe/herdr-layouts](https://github.com/eiwe/herdr-layouts) and the **LCARS** layout in
