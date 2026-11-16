@@ -24,7 +24,7 @@ following its own instructions, then come back here.
   Antigravity or Gemini CLI) and start any installed one beside the focused pane, with install and sign-in steps for the ones
   that are not installed yet. Everything works with every agent; a few extras, such as the resume list, are optional add-ons
   for agents that support them.
-- **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use SEND FILE. The file is saved beside
+- **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use FILE in its header. The file is saved beside
   the terminal and its path is typed in for the agent.
 - **Files and Changes panels**: browse files and view them, see `git` changes and diffs for the pane's folder, and commit.
 - **Other machines**: add another computer over SSH and use its terminals in the same window.

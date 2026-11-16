@@ -152,7 +152,7 @@ html[data-theme=titan] dialog label{color:var(--peach)}
 html[data-theme=titan] dialog input,html[data-theme=titan] #c-msg{background:var(--steel-dd);color:var(--txt);border-radius:10px;border:1px solid #3d4864}
 html[data-theme=titan] dialog input:focus,html[data-theme=titan] #c-msg:focus{outline:0;border-color:var(--blue)}
 html[data-theme=titan] #sec-dlg section{border-top:1px solid #39435a}
-html[data-theme=titan] #sec-dlg h4,html[data-theme=titan] #help-body h4,html[data-theme=titan] #info-body h4{color:var(--ice);font-weight:400;letter-spacing:.24em}
+html[data-theme=titan] #sec-dlg h4,html[data-theme=titan] #pal-list h4,html[data-theme=titan] #info-body h4{color:var(--ice);font-weight:400;letter-spacing:.24em}
 html[data-theme=titan] .urow,html[data-theme=titan] .icode,html[data-theme=titan] #sec-rc{background:var(--steel-dd);border-radius:10px;border:1px solid #39435a}
 html[data-theme=titan] .icode code,html[data-theme=titan] #sec-rc,html[data-theme=titan] .hrow kbd{color:var(--cyan)}
 html[data-theme=titan] .hrow:hover{background:var(--steel-dd)}html[data-theme=titan] .hrow.alt{background:#0b0e14}

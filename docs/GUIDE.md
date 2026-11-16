@@ -21,12 +21,12 @@ Your layout (spaces, tabs, pane splits) is saved in herdr-core, so another brows
 
 ## The screen
 
-- **Top bar**: the tabs of the current space, a **+** for a new tab, then MIC, FILES, CHANGES, SETTINGS and SIGN OUT.
+- **Top bar**: the tabs of the current space, a **+** for a new tab, then FILES, CHANGES, SETTINGS and SIGN OUT.
 - **Sidebar**: SPACES at the top (**+** adds one), AGENTS below with a status for each, then the buttons for starting things.
   Drag its right edge to resize it. Ctrl+Shift+B hides or shows it.
 - **Panes**: each has a header with its name, a status, and buttons for SPLIT R, SPLIT D, ZOOM, FILE and CLOSE.
-- **Status strip** along the bottom: the machine name, counts of spaces and agents, the connection (LINK OK), the clock, and a
-  reminder that Ctrl+Shift+P opens the command list.
+- **Status strip** along the bottom: the machine name, counts of spaces and agents, then MIC, SOUND and STUCK toggles, the
+  connection (LINK OK), the clock, and the COMMANDS button.
 
 ## Starting things
 
@@ -40,8 +40,7 @@ The buttons at the bottom of the sidebar start sessions beside the focused pane:
 - **MORE AGENTS**: any agent LCARS knows (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
   Antigravity, Gemini CLI), with a session-name option and "Choose the default agent…". Ones that are not installed show the
   install and sign-in steps instead. LCARS never installs anything itself.
-- **ADD MACHINE**: add another computer (see below).
-- **SEND FILE**: send a file or image to the focused terminal.
+- **Add machine**: the small computer icon beside **+** in the SPACES heading adds another computer (see below).
 
 A dialog asks for an optional name and the folder to start in. The pane header shows the terminal's session name as a small
 chip: other agents on the machine can reach that session by name with `hc send`.
@@ -74,8 +73,8 @@ always. Support for more agents can be added in `app/agents.py` (the `caps` entr
   the neighbouring pane takes its space.
 - **Rename**: double-click the title, or Ctrl+Alt+R. Tabs rename with F2 and spaces with Shift+F2.
 - **Status**: WORKING, NEEDS YOU, STUCK?, DONE, IDLE or LIVE. A working agent whose output has not changed for a while is
-  marked STUCK?; the STUCK button in the sidebar cycles how long that takes (or turns it off). The colour and bars also show
-  in the sidebar, so you can see which agent is waiting for you. SOUND turns the alert sounds on and off.
+  marked STUCK?; the STUCK button in the bottom strip cycles how long that takes (or turns it off). The colour and bars also show
+  in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off.
 
 The small code at the right of a pane header is the terminal's real address (for example `t7`, or `name/t7` on another machine),
 useful with the `hc` command.
@@ -89,14 +88,14 @@ they add no access that a terminal does not already have. They refuse `/proc`, `
 ## Sending files and images
 
 - **Paste** a screenshot or copied image with Ctrl+V.
-- **Drop** a file onto a pane, or use **FILE** in its header or **SEND FILE** in the sidebar.
+- **Drop** a file onto a pane, or use **FILE** in its header.
 
 The file is stored beside the terminal and its path is typed in, so you can tell the agent "look at this". Files can be up to
 8 MB.
 
 ## Other machines
 
-**ADD MACHINE** asks for an SSH address (for example `user@192.0.2.50`) and a name. herdr-core connects over SSH, and the
+**Add machine** (the computer icon in the SPACES heading) asks for an SSH address (for example `user@192.0.2.50`) and a name. herdr-core connects over SSH, and the
 machine's spaces and terminals then appear in the sidebar under its own heading, with a status dot. If the other machine
 needs to trust this server first, the dialog shows a command that authorises this server's SSH key there. A machine can be renamed, reconnected or removed from the
 same place.
@@ -114,14 +113,14 @@ Copying needs HTTPS or localhost for the browser's clipboard, but has a fallback
 
 ## Voice dictation
 
-**MIC** (or Ctrl+Alt+M) turns speech into text typed at the focused pane. Recognition happens in the browser on your device.
+**MIC** in the bottom strip (or Ctrl+Alt+M) turns speech into text typed at the focused pane. Recognition happens in the browser on your device.
 Say "period", "comma" or "question mark" for punctuation, and "press enter" to send. It needs a browser with speech recognition
 (Chrome or Edge) and microphone permission, on HTTPS or localhost.
 
 ## On a phone
 
 On a narrow screen LCARS shows one pane at a time. Swipe sideways on a pane header to change pane, and drag to scroll;
-full-screen programs scroll too. **KEYS** shows a touch bar with keys a phone keyboard lacks (Esc, Tab, Ctrl+C, arrows, Enter). Use
+full-screen programs scroll too. The key bar under the pane is a touch bar with keys a phone keyboard lacks (Esc, Tab, Ctrl+C, arrows, Enter). Use
 your browser's **Install** option, or the command **Install LCARS as an app**, to add it to your home screen.
 
 ## Settings
@@ -137,9 +136,9 @@ Open **SETTINGS** in the top bar.
 
 ## Command palette and finder
 
-- **Ctrl+Shift+P** opens a searchable list of every command, each with its shortcut.
+- **Ctrl+Shift+P**, F1 or the **COMMANDS** button at the bottom right opens one searchable list of every command, grouped,
+  each with its shortcut. Type to filter, Enter or a click runs it.
 - **Ctrl+Shift+K** finds a space, tab or agent by name and jumps to it.
-- **F1** shows all keyboard shortcuts.
 
 ## Keyboard shortcuts
 

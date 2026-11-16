@@ -635,7 +635,7 @@ const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
 
 def('app.palette', 'Command palette', () => openPalette(), 'App');
 def('app.picker', 'Find a space, tab or agent…', () => openPicker(), 'App');
-def('app.help', 'Keyboard shortcuts', () => openHelp(), 'App');
+def('app.help', 'Keyboard shortcuts', () => openPalette(), 'App');
 def('agent.menu', 'Start another coding agent…', () => agentsMenu(Math.max(20, innerWidth / 2 - 110), 110), 'Agents');
 def('app.install', 'Install LCARS as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
@@ -903,52 +903,47 @@ function movePick(d) {
 let palSel = 0, palItems = [];
 function openPalette() {
   const d = $('#pal-dlg'), input = $('#pal-input'); input.value = ''; fillPalette(''); d.showModal(); input.focus();
+  $('#pal-list').scrollTop = 0;
 }
+const PAL_ORDER = ['App', 'Spaces', 'Tabs', 'Panes', 'Agents', 'Terminal'];
+const PAL_EXTRA = [['Spaces', 'Go to space 1–9', 'Alt+1 … 9'], ['Tabs', 'Go to tab 1–9', 'Ctrl+1 … 9   or   Ctrl+Alt+1 … 9'],
+  ['Panes', 'Focus pane left / down / up / right', 'Alt+H  J  K  L   or   Alt+← →'], ['Panes', 'Swap pane left / down / up / right', 'Alt+Shift+H  J  K  L']];
 function fillPalette(q) {
   q = q.toLowerCase().trim(); const list = $('#pal-list'); list.textContent = '';
-  palItems = [...CMDS.values()].filter(c => q
-    ? (c.label.toLowerCase().includes(q) || c.id.includes(q) || c.group.toLowerCase().includes(q))
-    : !/\.select_\d$/.test(c.id));
-  palSel = 0;
-  palItems.forEach((c, i) => {
-    const row = document.createElement('div'); row.className = 'pal-item' + (i === 0 ? ' sel' : '');
-    row.innerHTML = '<span></span><kbd></kbd>'; $('span', row).textContent = `${c.group}: ${c.label}`; $('kbd', row).textContent = hintOf(c.id);
-    row.onclick = () => runPalette(i); list.appendChild(row);
-  });
+  const merged = /(space|tab)\.select_\d$|^pane\.(go|swap)_/;       // shown as ranges below
+  const groups = new Map(PAL_ORDER.map(g => [g, []]));
+  for (const c of CMDS.values()) {
+    if (merged.test(c.id)) continue;
+    if (q && !(c.label.toLowerCase().includes(q) || c.id.includes(q) || c.group.toLowerCase().includes(q))) continue;
+    const keys = KEYS.filter(([, id]) => id === c.id).map(([k]) => fmtKey(k)).slice(0, 3).join('   or   ');
+    (groups.get(c.group) || groups.set(c.group, []).get(c.group)).push({ label: c.label, keys, id: c.id });
+  }
+  for (const [g, l, k] of PAL_EXTRA) if (!q || `${g} ${l}`.toLowerCase().includes(q)) groups.get(g).push({ label: l, keys: k });
+  palItems = [];
+  for (const [g, rows] of groups) {
+    if (!rows.length) continue;
+    const h = document.createElement('h4'); h.textContent = g.toUpperCase(); list.appendChild(h);
+    let n = 0;
+    for (const r of rows) {
+      const row = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd');
+      row.className = 'hrow' + (n++ % 2 ? ' alt' : ''); a.textContent = r.label; b.textContent = r.keys; row.append(a, b);
+      if (r.id) { const i = palItems.push(r) - 1; row.classList.add('cmd'); row.dataset.i = i; row.onclick = () => runPalette(i); }
+      list.appendChild(row);
+    }
+  }
+  palSel = 0; const first = $('.hrow.cmd', list); if (first) first.classList.add('sel');
+  if (!palItems.length && !list.children.length) list.innerHTML = '<div class="hrow"><span>NOTHING MATCHES</span></div>';
+  if (!q) {
+    const note = document.createElement('p'); note.className = 'hnote';
+    note.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves. The Ctrl+Alt versions work everywhere, and the originals work when the page is installed as an app. Right-click a pane for its menu; Shift+right-click for the browser menu.';
+    list.appendChild(note);
+  }
 }
 function runPalette(i) { const c = palItems[i]; if (!c) return; $('#pal-dlg').close(); setTimeout(() => run(c.id), 30); }
 function movePal(d) {
-  const rows = [...$('#pal-list').children]; if (!rows.length) return;
+  const rows = [...$('#pal-list').querySelectorAll('.hrow.cmd')]; if (!rows.length) return;
   rows[palSel].classList.remove('sel'); palSel = (palSel + d + rows.length) % rows.length;
   rows[palSel].classList.add('sel'); rows[palSel].scrollIntoView({ block: 'nearest' });
-}
-function openHelp() {
-  const body = $('#help-body'); body.textContent = '';
-  const ORDER_G = ['App', 'Spaces', 'Tabs', 'Panes', 'Agents', 'Terminal'];
-  const groups = new Map(ORDER_G.map(g => [g, []]));
-  const merged = /(space|tab)\.select_\d$|^pane\.(go|swap)_/;       // shown below as ranges
-  for (const c of CMDS.values()) {
-    if (merged.test(c.id)) continue;
-    const keys = KEYS.filter(([, id]) => id === c.id).map(([k]) => fmtKey(k));
-    if (keys.length) (groups.get(c.group) || groups.set(c.group, []).get(c.group)).push([c.label, keys.slice(0, 3).join('   or   ')]);
-  }
-  groups.get('Spaces').push(['Go to space 1–9', 'Alt+1 … 9']);
-  groups.get('Tabs').push(['Go to tab 1–9', 'Ctrl+1 … 9   or   Ctrl+Alt+1 … 9']);
-  groups.get('Panes').push(['Focus pane left / down / up / right', 'Alt+H  J  K  L   or   Alt+← →']);
-  groups.get('Panes').push(['Swap pane left / down / up / right', 'Alt+Shift+H  J  K  L']);
-  for (const [g, rows] of groups) {
-    if (!rows.length) continue;
-    const h = document.createElement('h4'); h.textContent = g.toUpperCase(); body.appendChild(h);
-    let n = 0;
-    for (const [label, keys] of rows) {
-      const r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd');
-      r.className = 'hrow' + (n++ % 2 ? ' alt' : ''); a.textContent = label; b.textContent = keys; r.append(a, b); body.appendChild(r);
-    }
-  }
-  const note = document.createElement('p'); note.className = 'hnote';
-  note.textContent = 'Some browsers keep Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+1–9 for themselves. The Ctrl+Alt versions work everywhere, and the originals work when the page is installed as an app. Right-click a pane for its menu; Shift+right-click for the browser menu.';
-  body.appendChild(note);
-  const d = $('#help-dlg'); d.showModal(); d.scrollTop = 0;   // opening focuses Close at the bottom; start at the top
 }
 
 function beginPaneDrag(addr, e0) {
@@ -1554,34 +1549,33 @@ function init() {
   $('#info-close').onclick = () => $('#info-dlg').close();
   $('#info-dlg').addEventListener('close', () => { $('#info-shell').hidden = false; });
   $('#info-shell').onclick = () => { $('#info-dlg').close(); openBeside('shell', { cwd: cwdOf(S.focus) }); };
-  $('#keys-btn').onclick = () => run('app.help');
   $('#f-hint').onclick = () => run('app.palette');
   $('#menu-btn').onclick = () => document.body.classList.toggle('side-open');
   $('#main').addEventListener('click', () => document.body.classList.remove('side-open'));
-  $('#upload-btn').onclick = () => { if (!S.focus) return toast('Focus a terminal first', true); $('#file-input').click(); };
   $('#file-input').onchange = ev => { const p = P.get(S.focus); if (p) p.sendFiles([...ev.target.files]); ev.target.value = ''; };
   const stuckLbl = () => { const m = stuckMin(); $('#stuck-btn').textContent = m ? `STUCK ${m}M` : 'STUCK OFF'; };
-  $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); };
+  $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); if (S.focus) focusPane(S.focus); };
   stuckLbl();
   document.querySelectorAll('.mic-btn').forEach(b => { b.hidden = !(SpeechRec && typeof SpeechRec.available === 'function'); // the button must not take the keyboard focus from the pane: dictation types into the focused pane
     b.addEventListener('mousedown', ev => ev.preventDefault());
     b.onclick = () => { dictToggle(); if (S.focus) focusPane(S.focus); };
   });
   $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeDefault('pane'); };
-  $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
+  for (const id of ['#sound-btn', '#stuck-btn']) $(id).addEventListener('mousedown', ev => ev.preventDefault());   // keep the keyboard focus in the pane
+  $('#sound-btn').onclick = () => { toggleSound(); if (S.focus) focusPane(S.focus); }; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
   $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });
   $('#tabs').addEventListener('wheel', ev => { ev.preventDefault(); stepTab(ev.deltaY > 0 || ev.deltaX > 0 ? 1 : -1); }, { passive: false });
   $('#new-dlg').addEventListener('close', ev => {
     const dlg = ev.target;
     if (dlg.returnValue === 'ok') openBeside(dlg.dataset.kind, { name: $('#new-name').value.trim(), cwd: $('#new-cwd').value.trim(), explicit: true });
   });
+  $('#pal-close').onclick = () => $('#pal-dlg').close();
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));
   pi.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); movePal(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); movePal(-1); }
     else if (e.key === 'Enter') { e.preventDefault(); runPalette(palSel); }
   });
-  $('#help-close').onclick = () => $('#help-dlg').close();
   document.querySelectorAll('dialog button[value=cancel]').forEach(b => { b.type = 'button'; b.onclick = () => b.closest('dialog').close('cancel'); });
   setInterval(renderAgents, 30000);
   setInterval(stuckTick, 30000);

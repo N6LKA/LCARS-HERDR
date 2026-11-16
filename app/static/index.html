@@ -38,7 +38,7 @@
     <button id="side-show" title="Show the sidebar (Ctrl+Shift+B)" aria-label="Show sidebar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <div id="tabs" role="tablist"></div>
     <button class="pill peach" id="tab-add" title="New tab">+</button>
-    <div id="topbar-fill"><span id="top-info"></span><button id="btn-mic" class="tbtn mic-btn" hidden title="Dictation: speak and the text is typed at the focused pane (Ctrl+Alt+M)">MIC</button><button id="btn-files" class="tbtn" title="Files (Ctrl+Alt+F)">FILES</button><button id="btn-changes" class="tbtn" title="Git changes (Ctrl+Alt+G)">CHANGES</button><button id="btn-settings" class="tbtn" title="Account: password, 2FA, sessions" aria-label="Settings">SETTINGS</button><button id="btn-logout" class="tbtn" title="Sign out of LCARS" aria-label="Sign out">SIGN OUT</button></div>
+    <div id="topbar-fill"><span id="top-info"></span><button id="btn-files" class="tbtn" title="Files (Ctrl+Alt+F)">FILES</button><button id="btn-changes" class="tbtn" title="Git changes (Ctrl+Alt+G)">CHANGES</button><button id="btn-settings" class="tbtn" title="Account: password, 2FA, sessions" aria-label="Settings">SETTINGS</button><button id="btn-logout" class="tbtn" title="Sign out of LCARS" aria-label="Sign out">SIGN OUT</button></div>
     <span id="top-cap"></span>
   </header>
 
@@ -46,7 +46,7 @@
     <section class="sect" id="blk-spaces">
       <div class="rail r-peach"><span id="spaces-count">01</span></div>
       <div class="body">
-        <div class="rail-head"><span class="rail-title">SPACES</span><button class="rail-add" id="space-add" title="New space">+</button></div>
+        <div class="rail-head"><span class="rail-title">SPACES</span><button class="rail-ico" id="machine-add" title="Add a machine: connect another computer over SSH" aria-label="Add machine"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><button class="rail-add" id="space-add" title="New space">+</button></div>
         <div id="spaces"></div>
       </div>
     </section>
@@ -68,12 +68,9 @@
         <button class="pill peach" id="resume-btn" title="Pick an earlier conversation and carry on with it">RESUME</button>
         <button class="pill lilac" id="new-shell">NEW SHELL</button>
         <button class="pill peach" id="agents-btn" title="Start another coding agent">MORE AGENTS ▾</button>
-        <button class="pill tan" id="machine-add" title="Connect another machine over SSH">ADD MACHINE</button>
-        <button class="pill gold" id="upload-btn" title="Send an image or document to the focused terminal">SEND FILE</button>
         <button class="pill tan" id="install-btn" hidden>INSTALL APP</button>
         <button class="pill violet" id="side-settings" title="Account: password, 2FA, sessions">SETTINGS</button>
         <button class="pill red" id="side-logout" title="Sign out of LCARS">SIGN OUT</button>
-        <div class="foot-row"><button class="pill sky" id="keys-btn">KEYS</button><button class="pill violet" id="sound-btn">SOUND ON</button><button class="pill gold" id="stuck-btn" title="Warn when an agent says it is working but nothing has changed for this long">STUCK 10M</button></div>
       </div>
     </section>
     <input type="file" id="file-input" multiple hidden>
@@ -108,9 +105,12 @@
     <span id="f-spaces" class="chip lilac"></span>
     <span id="f-agents" class="chip lilac"></span>
     <span class="chip fill"></span>
+    <button id="btn-mic" class="chip lilac mic-btn" hidden title="Dictation: speak and the text is typed at the focused pane (Ctrl+Alt+M)">MIC</button>
+    <button id="sound-btn" class="chip violet" title="Alert sounds on or off">SOUND ON</button>
+    <button id="stuck-btn" class="chip gold" title="Warn when an agent says it is working but nothing has changed for this long. Click to change.">STUCK 10M</button>
     <span id="conn" class="chip sky" title="Live connection to the server">LINKING</span>
     <span id="f-clock" class="chip sky"></span>
-    <button id="f-hint" class="chip orange" title="Command palette">CTRL+SHIFT+P COMMANDS</button>
+    <button id="f-hint" class="chip orange" title="Every command and keyboard shortcut (F1)">COMMANDS · CTRL+SHIFT+P</button>
   </footer>
 </div>
 
@@ -213,19 +213,15 @@
 </dialog>
 
 <dialog id="pal-dlg">
-  <input id="pal-input" placeholder="Type a command…" autocomplete="off" spellcheck="false">
+  <h3>COMMANDS AND SHORTCUTS</h3>
+  <input id="pal-input" placeholder="Type to search, Enter to run…" autocomplete="off" spellcheck="false">
   <div id="pal-list"></div>
+  <div class="row" style="margin-top:10px"><button class="pill orange" type="button" id="pal-close">CLOSE</button></div>
 </dialog>
 
 <dialog id="pick-dlg">
   <input id="pick-input" placeholder="Find a space, tab or agent…" autocomplete="off" spellcheck="false">
   <div id="pick-list"></div>
-</dialog>
-
-<dialog id="help-dlg">
-  <h3>KEYBOARD SHORTCUTS</h3>
-  <div id="help-body"></div>
-  <div class="row"><button class="pill orange" id="help-close">CLOSE</button></div>
 </dialog>
 
 <dialog id="info-dlg">

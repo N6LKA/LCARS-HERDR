@@ -140,7 +140,7 @@ html[data-theme=picard] dialog input,html[data-theme=picard] #c-msg{background:v
 html[data-theme=picard] dialog input:focus,html[data-theme=picard] #c-msg:focus{outline:0;border-bottom-color:var(--orange);box-shadow:0 6px 12px -8px var(--orange)}
 html[data-theme=picard] dialog .pill{border-radius:0}
 html[data-theme=picard] #sec-dlg section{border-top:1px solid var(--line)}
-html[data-theme=picard] #sec-dlg h4,html[data-theme=picard] #help-body h4,html[data-theme=picard] #info-body h4{color:var(--lilac);font-weight:400;letter-spacing:.26em}
+html[data-theme=picard] #sec-dlg h4,html[data-theme=picard] #pal-list h4,html[data-theme=picard] #info-body h4{color:var(--lilac);font-weight:400;letter-spacing:.26em}
 html[data-theme=picard] .urow,html[data-theme=picard] .icode,html[data-theme=picard] #sec-rc{background:var(--pbg2);border-radius:0;border-left:3px solid var(--lilac)}
 html[data-theme=picard] .icode code,html[data-theme=picard] #sec-rc,html[data-theme=picard] .hrow kbd{color:var(--peach)}
 html[data-theme=picard] .hrow:hover{background:var(--pbg2)}html[data-theme=picard] .hrow.alt{background:var(--pbg)}
