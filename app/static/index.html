@@ -64,8 +64,8 @@
     <section class="sect" id="blk-foot">
       <div class="rail r-gold"></div>
       <div class="body foot">
-        <button class="pill orange" id="new-claude">NEW CLAUDE</button>
-        <button class="pill peach" id="resume-btn" title="Pick an earlier Claude conversation and carry on with it">RESUME CLAUDE</button>
+        <button class="pill orange" id="new-agent">NEW AGENT</button>
+        <button class="pill peach" id="resume-btn" title="Pick an earlier conversation and carry on with it">RESUME</button>
         <button class="pill lilac" id="new-shell">NEW SHELL</button>
         <button class="pill peach" id="agents-btn" title="Start another coding agent">MORE AGENTS ▾</button>
         <button class="pill tan" id="machine-add" title="Connect another machine over SSH">ADD MACHINE</button>
@@ -86,7 +86,7 @@
       <div id="panes"></div>
       <div id="empty">
         <h2>THIS TAB IS EMPTY</h2>
-        <p>Start a Claude session or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
+        <p>Start an agent or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
       </div>
       <div id="keybar" aria-label="Touch keys">
         <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
@@ -134,6 +134,9 @@
     <section><h4>CLOCK</h4>
       <p class="dim">The time in the bottom bar. Saved to your account like the look.</p>
       <div class="row" id="sec-clock"><button type="button" class="pill orange" data-clock="12">12 HOUR</button><button type="button" class="pill sky" data-clock="24">24 HOUR</button></div></section>
+    <section><h4>DEFAULT AGENT</h4>
+      <p class="dim">What the NEW button and the tab and split commands start. Saved to your account. Other agents are always in MORE AGENTS.</p>
+      <div class="row" id="sec-agent"></div></section>
     <section><h4>ACCOUNT</h4>
       <p class="dim" id="sec-who"></p>
       <form id="sec-nameform" autocomplete="off" action="#">

@@ -35,6 +35,12 @@
     window.dispatchEvent(new CustomEvent('lcars-clock', { detail: v })); clockMark();
   }
   window.lcarsClock = { get: clockGet, apply: clockApply };
+  // the default agent (what NEW AGENT starts): this browser and the account, same as the clock
+  const AK = 'lcars-agent';
+  const agentGet = () => { try { return localStorage.getItem(AK) || ''; } catch { return ''; } };
+  const agentApply = v => { if (!/^[a-z0-9_-]{1,20}$/.test(v || '')) return; try { localStorage.setItem(AK, v); } catch {} window.dispatchEvent(new CustomEvent('lcars-agent', { detail: v })); };
+  const agentSave = v => fetch('/api/auth/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: v }) }).catch(() => {});
+  window.lcarsAgent = { get: agentGet, apply: agentApply, save: agentSave };
   // follow the account's choice (set on another device), or hand it this browser's choice if the account has none yet
   fetch('/api/auth/status').then(r => r.ok ? r.json() : null).then(s => {
     if (!s || !s.user) return;
@@ -42,6 +48,8 @@
     if (t && t !== cur()) apply(t); else if (!t && cur() !== 'tng') saveToAccount(cur());
     const c = s.prefs && s.prefs.clock;
     if (c && c !== clockGet()) clockApply(c); else if (!c && clockGet() === '24') saveClock('24');
+    const ag = s.prefs && s.prefs.agent;
+    if (ag && ag !== agentGet()) agentApply(ag); else if (!ag && agentGet()) agentSave(agentGet());
   }).catch(() => {});
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#sec-themes button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { apply(b.dataset.theme); saveToAccount(b.dataset.theme); }; });

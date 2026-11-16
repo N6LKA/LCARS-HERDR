@@ -33,21 +33,40 @@ Your layout (spaces, tabs, pane splits) is saved in herdr-core, so another brows
 The buttons at the bottom of the sidebar start sessions beside the focused pane:
 
 - **NEW SHELL**: a plain shell.
-- **NEW CLAUDE** and **RESUME CLAUDE**: Claude Code, or an earlier Claude Code conversation picked from a list.
-- **MORE AGENTS**: any other agent LCARS knows (Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi, Antigravity,
-  Gemini CLI). Ones that are not installed show the install and sign-in steps instead. LCARS never installs anything itself.
+- **NEW AGENT**: starts your **default agent**. The button shows its name, for example NEW CLAUDE or NEW CODEX. Choose the
+  default in **Settings > Default agent** (it is Claude Code if that is installed, otherwise the first agent that is).
+- **RESUME**: shown only when the default agent is one LCARS can list earlier conversations for (today that is Claude Code).
+  It opens a searchable list of earlier conversations so you can carry on with one.
+- **MORE AGENTS**: any agent LCARS knows (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
+  Antigravity, Gemini CLI), with a session-name option and "Choose the default agent…". Ones that are not installed show the
+  install and sign-in steps instead. LCARS never installs anything itself.
 - **ADD MACHINE**: add another computer (see below).
 - **SEND FILE**: send a file or image to the focused terminal.
 
 A dialog asks for an optional name and the folder to start in. The pane header shows the terminal's session name as a small
 chip: other agents on the machine can reach that session by name with `hc send`.
 
-For agents that sign in with an API key, put `KEY=value` lines in the agents file (default `~/.config/lcars-claude/agents.env`,
+For agents that sign in with an API key, put `KEY=value` lines in the agents file (default `~/.config/lcars/agents.env`,
 mode 600). Agents started from LCARS get those values.
+
+## Agents: what works with each
+
+Almost everything is the same for every agent, because LCARS shows real terminals: starting, status (working, needs you, done),
+stuck detection, splitting and zooming, sending files and images, the Files and Changes panels, copy and paste, dictation,
+machines and session names. A few extras need support from the agent itself, so they are optional add-ons:
+
+| Extra | Needs | Today |
+|---|---|---|
+| A resume list of earlier conversations | LCARS can read that agent's saved sessions | Claude Code |
+| The pane name following a rename done inside the agent (`/rename`) | The agent records its own name | Claude Code |
+
+Other agents just do not show these. If you use another agent regularly, its own resume command works in its terminal as
+always. Support for more agents can be added in `app/agents.py` (the `caps` entry) when they offer something to read.
 
 ## Panes
 
-- **Split**: SPLIT R / SPLIT D in the header, Ctrl+Shift+O (right) and Ctrl+Shift+E (down), or right-click the pane.
+- **Split**: SPLIT R / SPLIT D in the header, Ctrl+Shift+O (right) and Ctrl+Shift+E (down), or right-click the pane. The
+  right-click menu also has **Split right / down with** your default agent, and **Split with another agent…** to pick one.
 - **Move**: drag a pane by its header onto another pane to swap or re-split.
 - **Resize**: drag the dividers.
 - **Zoom**: ZOOM or Ctrl+Shift+Z shows one pane full size; again shows them all.
@@ -111,6 +130,7 @@ Open **SETTINGS** in the top bar.
 
 - **Appearance**: TNG era, Picard era or Titan DS. Saved to your account.
 - **Clock**: 12 or 24 hour. Saved to your account.
+- **Default agent**: which agent the NEW button, the tab menu and the split commands start. Saved to your account.
 - **Account**: change your password or username, turn on **2FA** with an authenticator app (you get one-time recovery codes),
   see where you are signed in, and sign out other sessions.
 - **Users** (admins only): add and remove users. Every user can use the machine's terminals, so add only people you trust.

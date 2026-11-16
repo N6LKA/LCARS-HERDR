@@ -1,8 +1,8 @@
 """LCARS: a web front end for the terminals herdr-core runs.
 
-The browser never talks to Claude directly. It attaches to real `claude`
-terminals that live in herdr-core on this machine, so MCP tools load once and
-every session stays alive when the page is closed.
+The browser never talks to an agent directly. It attaches to real terminals (Claude Code, Codex, a shell...) that live
+in herdr-core on this machine, so every session stays alive when the page is closed. Claude Code has a few optional extras
+(resume list, following /rename); every other feature works for any agent.
 """
 import asyncio
 import base64
@@ -320,6 +320,7 @@ def _guarded(request: Request, fn, *a):
 class PrefsBody(BaseModel):
     theme: str = ""
     clock: str = ""
+    agent: str = ""
 
 
 @app.post("/api/auth/prefs")
@@ -330,6 +331,8 @@ async def auth_prefs(body: PrefsBody, request: Request):
             auth.set_pref(me, "theme", body.theme)
         if body.clock:
             auth.set_pref(me, "clock", body.clock)
+        if body.agent:
+            auth.set_pref(me, "agent", body.agent)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"ok": True}
@@ -564,11 +567,16 @@ async def new_terminal(body: NewTerminal):
         if body.agent not in agents.BY_ID:
             raise HTTPException(422, "unknown agent")
         argv = agents.argv_for(body.agent)
-        if not argv:
+        if not argv and not body.on:
             raise HTTPException(409, f"{agents.BY_ID[body.agent]['name']} is not installed on this server")
         params["argv"] = argv
         params["env"] = {**XTERM_ENV, **agents.extra_env()}
         params["labels"] = {"app": "lcars", "kind": "agent", "agent": body.agent}
+        if body.on:
+            # on another machine the command is looked up there by name, and this server's API keys are never sent to it
+            a = agents.BY_ID[body.agent]
+            params["argv"] = [a["commands"][0], *a["args"]]
+            params["env"] = XTERM_ENV
     if body.name:
         params["name"] = body.name
         params["labels"] = {**params.get("labels", {}), "title": body.name}   # the pane shows the session name

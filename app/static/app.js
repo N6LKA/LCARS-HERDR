@@ -359,6 +359,7 @@ function play(name) {
   } catch {}
 }
 async function createTerminal(kind, opt = {}) {
+  if (kind !== 'shell' && kind !== 'claude' && kind !== 'agent') { opt = { ...opt, agent: kind }; kind = 'agent'; }   // any other word is an agent id
   const machine = opt.machine !== undefined ? opt.machine : spaceMachine(curSpace());
   // a folder belongs to one machine: use it only if it was typed, or comes from a pane on the same machine
   const cwd = opt.cwd && (opt.explicit || opt.machine !== undefined || machineOf(S.focus || '') === machine) ? opt.cwd : undefined;
@@ -464,6 +465,7 @@ async function renameTab(id) {
   const v = await ask('RENAME TAB', tab.name || tabName(tab, sp.tabs.indexOf(tab)), 'empty restores the automatic name');
   if (v !== null) { tab.name = v ? v.toUpperCase() : null; commit(); }
 }
+const dn = () => { const a = defaultAgent(); return a.short || a.name; };   // the default agent's short name, for labels
 const SESSION_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 function replaceAddress(oldAddr, newAddr) {   // the same pane, now backed by a new terminal
   const re = a => a === oldAddr ? newAddr : a;
@@ -495,20 +497,64 @@ async function renameTerminal(addr) {
   } catch (e) { toast(e.message, true); }
 }
 async function askSessionName() {   // null: cancelled; '': no name; otherwise a valid session name
-  const v = await ask('NAME THIS CLAUDE SESSION', '', 'optional: letters, numbers, - and _ ; this is the name for hc send');
+  const v = await ask('NAME THIS SESSION', '', 'optional: letters, numbers, - and _ ; this is the name for hc send');
   if (v === null) return null;
   const name = v.toLowerCase();
   if (name && !SESSION_NAME.test(name)) { toast('A session name can use letters, numbers, - and _ (up to 32, no spaces)', true); return null; }
   return name;
 }
-async function splitClaude(addr, dir) {   // split with Claude, asking for a session name first (empty: an ordinary unnamed Claude)
-  const name = await askSessionName(); if (name === null) return;
-  return splitPane(addr, dir, 'claude', name ? { name } : {});
+// ── the default agent: what NEW AGENT, the tab and split commands start. Claude unless the person picks another. ──
+const AGENT_KEY = 'lcars-agent';
+const FALLBACK_AGENT = { id: 'claude', name: 'Claude Code', short: 'Claude', caps: { resume: 'claude' }, installed: true };
+function defaultAgentId() {
+  let want = null; try { want = localStorage.getItem(AGENT_KEY); } catch {}
+  const list = S.agents || [];
+  if (!list.length) return want || 'claude';
+  const usable = id => { const a = list.find(x => x.id === id); return !!(a && a.installed); };
+  if (want && usable(want)) return want;
+  if (usable('claude')) return 'claude';
+  const first = list.find(a => a.installed);
+  return first ? first.id : (want && list.some(a => a.id === want) ? want : 'claude');
 }
-async function newClaudeNamed(where) {
+const defaultAgent = () => agentById(defaultAgentId()) || FALLBACK_AGENT;
+async function splitAgent(addr, dir, id = defaultAgentId()) {   // split with an agent, asking for a session name first (empty: unnamed)
+  const name = await askSessionName(); if (name === null) return;
+  return splitPane(addr, dir, id, name ? { name } : {});
+}
+async function newAgentNamed(where, id = defaultAgentId()) {
   const name = await askSessionName(); if (name === null) return;
   const opt = { cwd: cwdOf(S.focus), ...(name ? { name } : {}) };
-  return where === 'tab' ? newTabWith('claude', opt) : openBeside('claude', opt);
+  return where === 'tab' ? newTabWith(id, opt) : openBeside(id, opt);
+}
+function resumeDefault(where) {   // only for an agent LCARS can list earlier conversations for (see caps in agents.py)
+  const a = defaultAgent();
+  if (a.caps && a.caps.resume) return resumeClaude(where);
+  toast(`LCARS cannot list ${a.name} conversations. Start it and use its own resume command.`, true);
+}
+function chooseAgent(x, y, then) {   // a small menu of the installed agents
+  const ok = (S.agents || []).filter(a => a.installed);
+  if (!ok.length) return toast('No coding agent is installed on this server yet. Use MORE AGENTS for the steps.', true);
+  showMenu(x, y, ok.map((a, i) => ({ label: a.name, key: i < 9 ? String(i + 1) : undefined, fn: () => then(a.id) })));
+}
+function fillAgentSettings() {   // Settings > DEFAULT AGENT: a button for each installed agent
+  const row = $('#sec-agent'); if (!row) return; row.textContent = '';
+  const ok = (S.agents || []).filter(a => a.installed), cur = defaultAgentId();
+  if (!ok.length) { const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'No coding agent is installed on this server yet. Use MORE AGENTS for the steps.'; row.appendChild(p); return; }
+  for (const a of ok) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pill ' + (a.id === cur ? 'orange' : 'gray');
+    b.textContent = (a.id === cur ? '\u2713 ' : '') + a.name.toUpperCase(); b.setAttribute('aria-pressed', a.id === cur);
+    b.onclick = () => { setDefaultAgent(a.id); fillAgentSettings(); };
+    row.appendChild(b);
+  }
+}
+function setDefaultAgent(id) { if (window.lcarsAgent) { window.lcarsAgent.apply(id); window.lcarsAgent.save(id); } }
+function chooseDefaultAgent(x = Math.max(20, innerWidth / 2 - 110), y = 110) {
+  chooseAgent(x, y, id => { setDefaultAgent(id); const a = agentById(id); toast(`DEFAULT AGENT: ${(a ? a.name : id).toUpperCase()}`); });
+}
+function agentSplitMenu(e, addr) {   // "Split with another agent…": pick the agent, then the direction
+  chooseAgent(e.clientX, e.clientY, id => showMenu(e.clientX, e.clientY, [
+    { label: 'Split right', fn: () => splitAgent(addr, 'right', id) }, { label: 'Split down', fn: () => splitAgent(addr, 'down', id) },
+  ]));
 }
 async function resumeClaude(where) {   // pick an earlier Claude conversation and carry on with it
   if (spaceMachine(curSpace())) return toast('Resuming works on this server only for now', true);
@@ -607,27 +653,39 @@ def('space.rename', 'Rename space', id => renameSpace(typeof id === 'string' ? i
 def('space.close', 'Close space', id => closeSpace(typeof id === 'string' ? id : undefined), 'Spaces');
 def('space.next', 'Next space', () => stepSpace(1), 'Spaces');
 def('space.prev', 'Previous space', () => stepSpace(-1), 'Spaces');
-def('pane.new_claude', 'New Claude beside this pane', () => openBeside('claude', { cwd: cwdOf(S.focus) }), 'Panes');
 def('app.dictate', 'Dictation on / off (microphone)', () => SpeechRec ? dictToggle() : toast('This browser has no speech recognition', true), 'App');
-def('pane.new_claude_named', 'New Claude with a session name…', () => newClaudeNamed('pane'), 'Panes');
-def('pane.resume_claude', 'Resume an earlier Claude conversation…', () => resumeClaude('pane'), 'Panes');
-def('tab.resume_claude', 'New tab: resume a Claude conversation…', () => resumeClaude('tab'), 'Tabs');
-def('tab.new_claude_named', 'New tab (Claude, named)…', () => newClaudeNamed('tab'), 'Tabs');
+function refreshAgentUi() {   // labels, buttons and one "Start X" command per installed agent follow the agent list and the default
+  const a = defaultAgent(), n = a.short || a.name;
+  for (const [id, lab] of AGENT_CMDS) { const c = CMDS.get(id); if (c) c.label = lab(n); }
+  for (const id of [...CMDS.keys()]) if (id.startsWith('agent.start.')) CMDS.delete(id);
+  for (const x of S.agents || []) if (x.installed) def(`agent.start.${x.id}`, `Start ${x.name} beside this pane`, () => startAgent(x), 'Agents');
+  const nb = $('#new-agent'); if (nb) { nb.textContent = `NEW ${n.toUpperCase()}`; nb.title = `Start ${a.name} beside the focused pane`; }
+  const rb = $('#resume-btn'); if (rb) { rb.style.display = a.caps && a.caps.resume ? '' : 'none'; rb.textContent = `RESUME ${n.toUpperCase()}`; rb.title = `Pick an earlier ${a.name} conversation and carry on with it`; }
+}
 def('pane.new_shell', 'New shell beside this pane', () => openBeside('shell', { cwd: cwdOf(S.focus) }), 'Panes');
 def('app.auto_open', 'Open helper terminals automatically: turn on or off', () => {
   S.autoOpen = !S.autoOpen; localStorage.setItem('lcars-autoopen', S.autoOpen ? 'on' : 'off');
   toast(`HELPER TERMINALS WILL ${S.autoOpen ? 'OPEN' : 'NOT OPEN'} AUTOMATICALLY`); if (S.autoOpen) refreshTerms().catch(() => {});
 }, 'App');
 def('tab.new', 'New tab (shell)', () => newTabWith('shell', { cwd: cwdOf(S.focus) }), 'Tabs');
-def('tab.new_claude', 'New tab (Claude)', () => newTabWith('claude', { cwd: cwdOf(S.focus) }), 'Tabs');
 def('tab.rename', 'Rename tab', id => renameTab(typeof id === 'string' ? id : undefined), 'Tabs');
 def('tab.close', 'Close tab', id => closeTab(typeof id === 'string' ? id : undefined), 'Tabs');
 def('tab.next', 'Next tab', () => stepTab(1), 'Tabs');
 def('tab.prev', 'Previous tab', () => stepTab(-1), 'Tabs');
 def('pane.split_right', 'Split right', a => splitPane(typeof a === 'string' ? a : undefined, 'right'), 'Panes');
 def('pane.split_down', 'Split down', a => splitPane(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
-def('pane.split_right_claude', 'Split right with Claude', a => splitClaude(typeof a === 'string' ? a : undefined, 'right'), 'Panes');
-def('pane.split_down_claude', 'Split down with Claude', a => splitClaude(typeof a === 'string' ? a : undefined, 'down'), 'Panes');
+const AGENT_CMDS = [   // [id, label for an agent name, what it does, group]
+  ['pane.new_agent', n => `New ${n} beside this pane`, () => openBeside(defaultAgentId(), { cwd: cwdOf(S.focus) }), 'Panes'],
+  ['pane.new_agent_named', n => `New ${n} with a session name…`, () => newAgentNamed('pane'), 'Panes'],
+  ['pane.resume_agent', n => `Resume an earlier ${n} conversation…`, () => resumeDefault('pane'), 'Panes'],
+  ['tab.new_agent', n => `New tab (${n})`, () => newTabWith(defaultAgentId(), { cwd: cwdOf(S.focus) }), 'Tabs'],
+  ['tab.new_agent_named', n => `New tab (${n}, named)…`, () => newAgentNamed('tab'), 'Tabs'],
+  ['tab.resume_agent', n => `New tab: resume a ${n} conversation…`, () => resumeDefault('tab'), 'Tabs'],
+  ['pane.split_right_agent', n => `Split right with ${n}`, a => splitAgent(typeof a === 'string' ? a : undefined, 'right'), 'Panes'],
+  ['pane.split_down_agent', n => `Split down with ${n}`, a => splitAgent(typeof a === 'string' ? a : undefined, 'down'), 'Panes'],
+];
+AGENT_CMDS.forEach(([id, lab, fn, grp]) => def(id, lab('agent'), fn, grp));
+def('agent.default', 'Choose the default agent…', () => chooseDefaultAgent(), 'Agents');
 def('pane.rename', 'Rename pane', a => renameTerminal(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.zoom', 'Zoom pane or show all panes', a => toggleZoom(typeof a === 'string' ? a : undefined), 'Panes');
 def('pane.close', 'Close pane (ends its terminal)', a => closePane(typeof a === 'string' ? a : undefined), 'Panes');
@@ -730,7 +788,7 @@ function paneMenu(e, addr) {
   showMenu(e.clientX, e.clientY, [
     { label: 'Copy', cmd: 'terminal.copy', off: !sel }, { label: 'Paste', cmd: 'terminal.paste' }, '-',
     { label: 'Split right', cmd: 'pane.split_right', arg: addr }, { label: 'Split down', cmd: 'pane.split_down', arg: addr },
-    { label: 'Split right with Claude', cmd: 'pane.split_right_claude', arg: addr }, { label: 'Split down with Claude', cmd: 'pane.split_down_claude', arg: addr },
+    { label: `Split right with ${dn()}`, cmd: 'pane.split_right_agent', arg: addr }, { label: `Split down with ${dn()}`, cmd: 'pane.split_down_agent', arg: addr }, { label: 'Split with another agent…', fn: () => agentSplitMenu(e, addr) },
     { label: S.zoomed[(curTab() || {}).id] === addr ? 'Show all panes' : 'Zoom', cmd: 'pane.zoom', arg: addr },
     { label: 'Rename', cmd: 'pane.rename', arg: addr }, '-',
     { label: 'Hide pane (keeps running)', cmd: 'pane.hide', arg: addr }, { label: 'Close pane', cmd: 'pane.close', arg: addr },
@@ -739,7 +797,7 @@ function paneMenu(e, addr) {
 function tabMenu(e, id) {
   e.preventDefault();
   showMenu(e.clientX, e.clientY, [
-    { label: 'Rename', cmd: 'tab.rename', arg: id }, { label: 'New tab', cmd: 'tab.new' }, { label: 'New Claude tab', cmd: 'tab.new_claude' }, { label: 'New Claude tab (named)…', cmd: 'tab.new_claude_named' }, '-',
+    { label: 'Rename', cmd: 'tab.rename', arg: id }, { label: 'New tab', cmd: 'tab.new' }, { label: `New ${dn()} tab`, cmd: 'tab.new_agent' }, { label: `New ${dn()} tab (named)…`, cmd: 'tab.new_agent_named' }, '-',
     { label: 'Close', cmd: 'tab.close', arg: id },
   ]);
 }
@@ -779,14 +837,18 @@ async function pasteClip() {
 }
 async function loadAgents() {
   try { const d = await api('/api/agents'); S.agents = d.agents; S.agentEnv = d.env_file; S.home = d.home || '/'; } catch {}
+  refreshAgentUi();
 }
-const startAgent = a => spaceMachine(curSpace()) && a.id !== 'claude' ? toast('Other agents start on this server only for now', true) : a.id === 'claude' ? openBeside('claude', { cwd: cwdOf(S.focus) }) : openBeside('agent', { agent: a.id, cwd: cwdOf(S.focus) });
+const startAgent = a => openBeside(a.id, { cwd: cwdOf(S.focus) });
 async function agentsMenu(x, y) {
   await loadAgents();
   const ok = S.agents.filter(a => a.installed), no = S.agents.filter(a => !a.installed), items = [];
   ok.forEach((a, i) => items.push({ label: a.name, key: i < 9 ? String(i + 1) : undefined, fn: () => startAgent(a) }));
   if (no.length) { items.push('-'); no.forEach(a => items.push({ label: `${a.name} · not installed`, dim: true, fn: () => showAgentInfo(a) })); }
-  items.push({ label: 'Claude, with a session name…', fn: () => newClaudeNamed('pane') }, { label: 'Resume a Claude conversation…', fn: () => resumeClaude('pane') });
+  const d = defaultAgent();
+  items.push('-', { label: `${d.name}, with a session name…`, fn: () => newAgentNamed('pane') });
+  if (d.caps && d.caps.resume) items.push({ label: `Resume a ${d.name} conversation…`, fn: () => resumeDefault('pane') });
+  items.push({ label: 'Choose the default agent…', fn: () => chooseDefaultAgent(x, y) });
   items.push('-', { label: 'Setup and sign-in help…', fn: () => showMenu(x, y, S.agents.map(a => ({ label: a.name + (a.installed ? '' : ' · not installed'), dim: !a.installed, fn: () => showAgentInfo(a) }))) });
   showMenu(x, y, items);
 }
@@ -1083,7 +1145,7 @@ class Pane {
         const r = await fetch('/api/terminals/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
         const { path } = await r.json();
-        this.term.paste(path + ' ');   // bracketed paste, so Claude sees an attached file
+        this.term.paste(path + ' ');   // bracketed paste, so the agent sees an attached file
         toast(`SENT ${f.name || 'IMAGE'}`);
       } catch (e) { toast(`Upload failed: ${e.message}`, true); }
     }
@@ -1454,16 +1516,23 @@ function toggleSound() {
 }
 function startSession(kind) {
   const dlg = $('#new-dlg');
-  $('#new-title').textContent = kind === 'claude' ? 'NEW CLAUDE SESSION' : 'NEW SHELL';
+  const ag = kind === 'shell' ? null : agentById(kind) || (kind === defaultAgentId() ? defaultAgent() : null);
+  $('#new-title').textContent = ag ? `NEW ${(ag.short || ag.name).toUpperCase()} SESSION` : 'NEW SHELL';
   const remote = !!spaceMachine(curSpace()), here = machineOf(S.focus || '') === spaceMachine(curSpace());
   $('#new-name').value = ''; $('#new-cwd').value = remote ? (here && cwdOf(S.focus)) || '' : (here && cwdOf(S.focus)) || S.home; $('#new-cwd').placeholder = remote ? 'empty: its home folder' : ''; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
 }
 function init() {
-  $('#new-claude').onclick = () => startSession('claude');
+  $('#new-agent').onclick = () => {
+    const a = defaultAgent();
+    if (!a.installed && !spaceMachine(curSpace())) return showAgentInfo(a);   // not installed here: show the install and sign-in steps
+    startSession(a.id);
+  };
+  window.addEventListener('lcars-agent', () => { refreshAgentUi(); fillAgentSettings(); }); refreshAgentUi();
+  $('#btn-settings').addEventListener('click', () => loadAgents().then(fillAgentSettings));
   $('#new-shell').onclick = () => startSession('shell');
   $('#tab-add').onclick = ev => {
     const r = ev.currentTarget.getBoundingClientRect();
-    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: 'Claude', cmd: 'tab.new_claude' }, { label: 'Claude (named)…', cmd: 'tab.new_claude_named' }, { label: 'Resume Claude…', cmd: 'tab.resume_claude' }, '-', { label: 'New space', cmd: 'space.new' }]);
+    showMenu(r.left, r.bottom + 4, [{ label: 'Terminal', cmd: 'tab.new' }, { label: dn(), cmd: 'tab.new_agent' }, { label: `${dn()} (named)…`, cmd: 'tab.new_agent_named' }, ...(defaultAgent().caps && defaultAgent().caps.resume ? [{ label: `Resume ${dn()}…`, cmd: 'tab.resume_agent' }] : []), '-', { label: 'New space', cmd: 'space.new' }]);
   };
   $('#space-add').onclick = () => run('space.new');
   $('#search-btn').onclick = openPicker;
@@ -1495,7 +1564,7 @@ function init() {
   $('#stuck-btn').onclick = () => { const i = STUCK_STEPS.indexOf(stuckMin()); localStorage.setItem('lcars-stuck', String(STUCK_STEPS[(i + 1) % STUCK_STEPS.length])); stuckLbl(); stuckTick(); };
   stuckLbl();
   document.querySelectorAll('.mic-btn').forEach(b => { b.hidden = !(SpeechRec && typeof SpeechRec.available === 'function'); b.onclick = dictToggle; });
-  $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeClaude('pane'); };
+  $('#resume-btn').onclick = () => { document.body.classList.remove('side-open'); resumeDefault('pane'); };
   $('#sound-btn').onclick = toggleSound; $('#sound-btn').textContent = S.sound ? 'SOUND ON' : 'SOUND OFF';
   $('#keybar').addEventListener('click', ev => { const k = ev.target.dataset && ev.target.dataset.k; const p = P.get(S.focus); if (k && p) { p.send({ type: 'input', data: KEYSEQ[k] }); p.term.focus(); } });
   $('#tabs').addEventListener('wheel', ev => { ev.preventDefault(); stepTab(ev.deltaY > 0 || ev.deltaX > 0 ? 1 : -1); }, { passive: false });

@@ -1,8 +1,8 @@
-# LCARS
+# LCARS-HERDR
 
 ![License](https://img.shields.io/badge/License-GPLv3-lightgrey)
 
-A Star Trek LCARS-styled web console for the coding-agent terminals running on a server. Open it in any browser, on a
+LCARS-HERDR is a Star Trek LCARS-styled web console for the coding-agent terminals running on a server. Open it in any browser, on a
 desktop or a phone, and work with Claude Code, GitHub Copilot, Codex and other agents in real terminals that keep running
 when you close the page.
 
@@ -20,8 +20,10 @@ following its own instructions, then come back here.
   pane by its header to move or swap it, zoom, rename, close. Closing a pane gives its space to its neighbour.
 - **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars and optional alert sounds,
   so you can see which agent is waiting for you without opening it.
-- **Several coding agents**: start any installed agent beside the focused pane, and get install and sign-in steps for the
-  ones that are not installed yet.
+- **Any coding agent**: pick a default agent (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
+  Antigravity or Gemini CLI) and start any installed one beside the focused pane, with install and sign-in steps for the ones
+  that are not installed yet. Everything works with every agent; a few extras, such as the resume list, are optional add-ons
+  for agents that support them.
 - **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use SEND FILE. The file is saved beside
   the terminal and its path is typed in for the agent.
 - **Files and Changes panels**: browse files and view them, see `git` changes and diffs for the pane's folder, and commit.
@@ -55,8 +57,8 @@ browser.
 ## Install
 
 ```bash
-git clone https://github.com/N6LKA/lcars-claude.git
-cd lcars-claude
+git clone https://github.com/N6LKA/LCARS-HERDR.git
+cd LCARS-HERDR
 ./install.sh
 ```
 
@@ -101,7 +103,7 @@ The first account is the admin and can add other users in **Settings**. Turn on 
 
 ## Using LCARS
 
-Start with **NEW SHELL** or **NEW CLAUDE** in the sidebar, then press **F1** for every keyboard shortcut or **Ctrl+Shift+P** for
+Start with **NEW SHELL** or **NEW AGENT** in the sidebar, then press **F1** for every keyboard shortcut or **Ctrl+Shift+P** for
 a searchable list of every command. The full guide, with the sidebar, panes, panels, machines, dictation, copy and paste and a
 shortcut table, is in **[docs/GUIDE.md](docs/GUIDE.md)**.
 
@@ -114,7 +116,7 @@ Settings come from the `.env` file next to `run.py`, or from the environment.
 | `LCARS_TOKEN` | Optional access code for programs running on the same machine. Never accepted from the network. |
 | `HOST`, `PORT` | Where to listen (default `0.0.0.0:7842`). |
 | `LCARS_TRUSTED_PROXIES` | Address(es) of your reverse proxy, comma separated, so failed-login limits count the real visitor. |
-| `LCARS_AGENT_ENV` | A `KEY=value` file (mode 600) of API keys for agents that need one. Default `~/.config/lcars-claude/agents.env`. |
+| `LCARS_AGENT_ENV` | A `KEY=value` file (mode 600) of API keys for agents that need one. Default `~/.config/lcars/agents.env`. |
 | `LCARS_AUTH_FILE` | Where accounts are kept. Default `auth.json` next to the app. |
 | `LCARS_CLAUDE_DIR` | Where Claude Code keeps its sessions. Default `~/.claude`. |
 | `HC_SOCKET`, `HC_SESSION` | Which herdr-core to talk to, if you do not use the default one. |
@@ -137,7 +139,7 @@ An extra login in front, such as Authelia or a VPN, is a good idea: see Safety.
 ## Updating
 
 ```bash
-cd lcars-claude
+cd LCARS-HERDR
 git pull
 ./install.sh        # refreshes the Python packages and the service
 ```

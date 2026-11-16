@@ -9,54 +9,61 @@ from pathlib import Path
 
 # The path the core gives its terminals, so "installed" means "a terminal here can start it".
 SEARCH_PATH = f"{Path.home()}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ENV_FILE = Path(os.environ.get("LCARS_AGENT_ENV") or Path.home() / ".config" / "lcars-claude" / "agents.env")
+_NEW_ENV, _OLD_ENV = Path.home() / ".config" / "lcars" / "agents.env", Path.home() / ".config" / "lcars-claude" / "agents.env"
+# an agents.env left at the old location by an earlier version keeps working until it is moved
+ENV_FILE = Path(os.environ.get("LCARS_AGENT_ENV") or (_OLD_ENV if _OLD_ENV.exists() and not _NEW_ENV.exists() else _NEW_ENV))
 
-# id, name, commands to look for (first found is used), extra arguments to start it with,
-# install steps, sign-in steps, what account it needs, notes
+# id, name, short (for buttons), commands to look for (first found is used), extra arguments to start it with,
+# install steps, sign-in steps, what account it needs, notes.
+# caps: optional extras LCARS can add for an agent, beyond starting it. Everything else (status, split, send file...) works for
+# any agent. "resume": "claude" means LCARS can list that agent's earlier conversations (the "claude" adapter reads Claude Code's
+# saved sessions). Add a capability only when the agent really supports it.
 AGENTS = [
-    dict(id="claude", name="Claude Code", commands=["claude"], args=[],
-         install=[], login=["Already set up on this server. Run /login inside it if it asks."],
-         account="A Claude subscription or API account.", note=""),
-    dict(id="copilot", name="GitHub Copilot", commands=["copilot"], args=[],
+    dict(id="claude", short="Claude", name="Claude Code", commands=["claude"], args=[],
+         install=["npm install -g @anthropic-ai/claude-code"],
+         login=["$ claude", "Then run /login inside it, or set ANTHROPIC_API_KEY in the agents.env file (see below)."],
+         account="A Claude subscription or an Anthropic API account.", note="Needs Node 18 or newer. See the Claude Code docs for other install methods.",
+         caps={"resume": "claude"}),
+    dict(id="copilot", short="Copilot", name="GitHub Copilot", commands=["copilot"], args=[],
          install=["npm install -g @github/copilot"],
          login=["$ copilot login --device-code", "Open github.com/login/device on any device and enter the code it shows."],
          account="A GitHub Copilot plan. The free plan includes the command-line agent. Check github.com/settings/copilot. "
                  "Copilot that comes with Microsoft 365 is a different product and does not work here.",
          note="Needs Node 22 or newer."),
-    dict(id="codex", name="OpenAI Codex", commands=["codex"], args=["--no-daemon"],
+    dict(id="codex", short="Codex", name="OpenAI Codex", commands=["codex"], args=["--no-daemon"],
          install=["npm install -g @openai/codex"],
          login=["$ codex login --device-auth", "Device-code sign-in must first be turned on in your ChatGPT security settings.",
                 "Or sign in on another computer and copy ~/.codex/auth.json here (treat that file like a password)."],
          account="ChatGPT Plus or higher, or an OpenAI API key. Whether a free ChatGPT account can use the command-line tool is unconfirmed.",
          note="Started with --no-daemon so each terminal is self-contained."),
-    dict(id="grok", name="Grok", commands=["grok"], args=[],
+    dict(id="grok", short="Grok", name="Grok", commands=["grok"], args=[],
          install=["curl -fsSL https://x.ai/cli/install.sh | bash"],
          login=["Browser sign-in does not work on a server. Add  XAI_API_KEY=your-key  to the agents.env file (see below)."],
          account="An xAI API key, billed by use. I found no free credits.", note=""),
-    dict(id="opencode", name="OpenCode", commands=["opencode"], args=[],
+    dict(id="opencode", short="OpenCode", name="OpenCode", commands=["opencode"], args=[],
          install=["curl -fsSL https://opencode.ai/v2/install | bash"],
          login=["$ opencode auth login"],
          account="Your own provider keys or subscriptions. Cheap pay-per-token models are available, or OpenCode Go at $10 a month.",
          note=""),
-    dict(id="cursor", name="Cursor Agent", commands=["cursor-agent", "agent"], args=[],
+    dict(id="cursor", short="Cursor", name="Cursor Agent", commands=["cursor-agent", "agent"], args=[],
          install=["curl https://cursor.com/install -fsS | bash"],
          login=["$ NO_OPEN_BROWSER=1 agent login", "Or add  CURSOR_API_KEY=your-key  to the agents.env file."],
          account="A Cursor account. Whether the free plan includes the command-line agent is unconfirmed.",
          note="The current docs call the command agent; older versions call it cursor-agent."),
-    dict(id="amp", name="Amp", commands=["amp"], args=[],
+    dict(id="amp", short="Amp", name="Amp", commands=["amp"], args=[],
          install=["curl -fsSL https://ampcode.com/install.sh | bash"],
          login=["$ amp login", "Or add  AMP_API_KEY=your-key  to the agents.env file."],
          account="An ampcode.com account. The software is free, but model use is paid or bring-your-own-key.", note=""),
-    dict(id="pi", name="Pi", commands=["pi"], args=[],
+    dict(id="pi", short="Pi", name="Pi", commands=["pi"], args=[],
          install=["curl -fsSL https://pi.dev/install.sh | sh"],
          login=["Run /login inside Pi."],
          account="A subscription or API key from a model provider.", note="Needs Node 22.19 or newer."),
-    dict(id="antigravity", name="Antigravity (Google)", commands=["agy"], args=[],
+    dict(id="antigravity", short="Antigravity", name="Antigravity (Google)", commands=["agy"], args=[],
          install=["curl -fsSL https://antigravity.google/cli/install.sh | bash"],
          login=["$ agy", "Sign in with your Google account when it asks."],
          account="A Google account. There is a free weekly quota.",
          note="Sign-in is stored in the system keyring, which a server may not have. Untested here."),
-    dict(id="gemini", name="Gemini CLI", commands=["gemini"], args=[],
+    dict(id="gemini", short="Gemini", name="Gemini CLI", commands=["gemini"], args=[],
          install=["npm install -g @google/gemini-cli"],
          login=["Add  GEMINI_API_KEY=your-key  to the agents.env file."],
          account="Google moved free and consumer access to Antigravity. This tool now needs a Code Assist enterprise license, or a usage-billed API key.",
@@ -77,7 +84,8 @@ def listing() -> list[dict]:
     out = []
     for a in AGENTS:
         cmd = find(a)
-        out.append({k: a[k] for k in ("id", "name", "install", "login", "account", "note")} | {"installed": cmd is not None, "command": cmd})
+        out.append({k: a[k] for k in ("id", "name", "short", "install", "login", "account", "note")}
+                   | {"installed": cmd is not None, "command": cmd, "caps": a.get("caps", {})})
     return out
 
 

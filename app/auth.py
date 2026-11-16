@@ -129,14 +129,18 @@ def otpauth_uri(secret: str, user: str = "lcars") -> str:
     return f"otpauth://totp/{ISSUER}:{user}?secret={secret}&issuer={ISSUER}&algorithm=SHA1&digits=6&period=30"
 
 
-PREF_CHOICES = {"theme": ("tng", "picard", "titan"), "clock": ("12", "24")}          # the preferences a user may keep on their account, and their allowed values
+PREF_CHOICES = {"theme": ("tng", "picard", "titan"), "clock": ("12", "24")}   # preferences with a fixed set of values ("agent" is checked against agents.BY_ID)
 
 
 def set_pref(user: str, key: str, value: str) -> None:
     with _lock:
         d = _load()
         u = _account(d, user)
-        if value not in PREF_CHOICES.get(key, ()):
+        if key == "agent":
+            from . import agents
+            if value not in agents.BY_ID:
+                raise ValueError("unknown agent")
+        elif value not in PREF_CHOICES.get(key, ()):
             raise ValueError("unknown preference or value")
         u.setdefault("prefs", {})[key] = value
         _save(d)

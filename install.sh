@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LCARS installer. Run it from the folder you cloned LCARS into:
 #
-#     git clone https://github.com/N6LKA/lcars-claude.git && cd lcars-claude && ./install.sh
+#     git clone https://github.com/N6LKA/LCARS-HERDR.git && cd LCARS-HERDR && ./install.sh
 #
 # It checks the requirements, makes a private Python environment, creates the .env file (with a random access
 # code), and sets LCARS up as a service that starts at boot. Run as root it installs a system service; run as an
