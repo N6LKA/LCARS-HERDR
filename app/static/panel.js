@@ -46,7 +46,7 @@ function initSideResize() {
   window.addEventListener('resize', () => { const w = Number(localStorage.getItem(SIDE.key)); if (w) setSide(w, false); });
 }
 function savePanels() { localStorage.setItem('lcars-panels', JSON.stringify(PANEL.saved)); }
-function panelCwd() { return (typeof cwdOf === 'function' && S.focus && cwdOf(S.focus)) || '/root'; }
+function panelCwd() { return (typeof cwdOf === 'function' && S.focus && cwdOf(S.focus)) || (typeof S !== 'undefined' && S.home) || '/'; }
 function relPath(p) { return PANEL.root && p.startsWith(PANEL.root + '/') ? p.slice(PANEL.root.length + 1) : p; }
 
 function applyPanelDom() {

@@ -22,12 +22,12 @@ router = APIRouter()
 TARGET_RE = re.compile(r"^(?!-)(?:[A-Za-z0-9._-]{1,64}@)?(?:[A-Za-z0-9._-]{1,253}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?$")
 # becomes the prefix of every address (name/t7), so no slash, space or capitals
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,31}$")
-PUBKEY = Path("/root/.ssh/id_ed25519.pub")
+PUBKEY = Path.home() / ".ssh" / "id_ed25519.pub"
 
 
 def _hc() -> str:
     import shutil
-    return shutil.which("hc", path=agents.SEARCH_PATH) or "/root/.local/bin/hc"
+    return shutil.which("hc", path=agents.SEARCH_PATH) or str(Path.home() / ".local" / "bin" / "hc")
 
 
 def _check_name(name: str) -> str:

@@ -8,8 +8,8 @@ import shutil
 from pathlib import Path
 
 # The path the core gives its terminals, so "installed" means "a terminal here can start it".
-SEARCH_PATH = "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ENV_FILE = Path(os.environ.get("LCARS_AGENT_ENV", "/root/.config/lcars-claude/agents.env"))
+SEARCH_PATH = f"{Path.home()}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV_FILE = Path(os.environ.get("LCARS_AGENT_ENV") or Path.home() / ".config" / "lcars-claude" / "agents.env")
 
 # id, name, commands to look for (first found is used), extra arguments to start it with,
 # install steps, sign-in steps, what account it needs, notes

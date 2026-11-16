@@ -20,7 +20,7 @@ DIFF_LINES = 1500
 MAX_CHANGED = 1000
 # read-only git: do not touch the index or run a file-system monitor, so looking never changes the repository
 READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"]
-ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", "HOME": os.environ.get("HOME", "/root")}
+ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", "HOME": os.environ.get("HOME") or str(Path.home())}
 
 
 def _safe(path: str) -> Path:

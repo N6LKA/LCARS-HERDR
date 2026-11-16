@@ -117,8 +117,8 @@
 <dialog id="new-dlg">
   <form method="dialog" id="new-form">
     <h3 id="new-title">NEW SESSION</h3>
-    <label>NAME (optional)<input id="new-name" maxlength="32" pattern="[a-z0-9][a-z0-9_.\-]*" placeholder="e.g. homelab"></label>
-    <label>FOLDER<input id="new-cwd" value="/root"></label>
+    <label>NAME (optional)<input id="new-name" maxlength="32" pattern="[a-z0-9][a-z0-9_.\-]*" placeholder="e.g. api"></label>
+    <label>FOLDER<input id="new-cwd" value=""></label>
     <div class="row"><button class="pill gray" value="cancel" formnovalidate>CANCEL</button><button class="pill orange" value="ok">ENGAGE</button></div>
   </form>
 </dialog>
@@ -182,7 +182,7 @@
   <form method="dialog" id="mach-form">
     <h3>ADD MACHINE</h3>
     <label>NAME<input id="mach-name" maxlength="32" placeholder="e.g. rssh-server" autocomplete="off" spellcheck="false"></label>
-    <label>SSH ADDRESS<input id="mach-target" placeholder="user@192.168.1.50" autocomplete="off" spellcheck="false"></label>
+    <label>SSH ADDRESS<input id="mach-target" placeholder="user@192.0.2.50" autocomplete="off" spellcheck="false"></label>
     <label class="chk"><input type="checkbox" id="mach-install" checked> INSTALL HC THERE IF IT HAS NONE</label>
     <p id="mach-msg" class="dim"></p>
     <div id="mach-help" hidden>

@@ -1,7 +1,10 @@
-# Example systemd unit: /etc/systemd/system/lcars.service  (adjust the paths)
+# Example systemd unit: /etc/systemd/system/lcars.service
+# ./install.sh writes one like this for you with the right paths; use this only if you set things up by hand.
+# Replace the paths, and the user if it should not run as root. For a user service, drop User= and install it in
+# ~/.config/systemd/user/ with WantedBy=default.target.
 [Unit]
 Description=LCARS (web console for herdr-core terminals)
-After=network.target user@0.service
+After=network.target
 
 [Service]
 Type=simple
@@ -11,7 +14,7 @@ Environment=HOME=/root
 Environment=XDG_RUNTIME_DIR=/run/user/0
 # make sure the core is up after a reboot; a no-op when it already runs
 ExecStartPre=-/root/.local/bin/hc server start
-ExecStart=/usr/bin/python3 /opt/lcars/run.py
+ExecStart=/opt/lcars/.venv/bin/python /opt/lcars/run.py
 Restart=on-failure
 RestartSec=5
 

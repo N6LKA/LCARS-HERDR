@@ -1,5 +1,5 @@
 /* TITAN DS look. Applies only when <html data-theme="titan">. Colours and shapes follow the Titan DS Star Trek live wallpaper
-   (screenshot supplied by Larry): slate-steel frames around black inset screens, icy blue and cyan readouts, peach and coral
+   (from a screenshot of it): slate-steel frames around black inset screens, icy blue and cyan readouts, peach and coral
    tags, small numeric-looking chips. Same markup, same layout, same behaviour as the other looks: only the styling differs. */
 html[data-theme=titan]{
   --steel:#52596e;--steel-d:#2f3749;--steel-dd:#232a3a;--steel-l:#647791;

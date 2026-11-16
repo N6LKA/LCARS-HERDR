@@ -45,6 +45,7 @@ const S = {
   autoOpen: localStorage.getItem('lcars-autoopen') !== 'off',
   agents: [],            // coding agents this server knows, with an installed flag (from /api/agents)
   agentEnv: '',
+  home: '/',
   coreName: '',          // this server's core name, the default name of the machine it runs on
   localName: '',         // the name shown for this server instead, set by renaming it (kept in the layout)
   machines: [],          // other machines added to the core, with their connection state
@@ -777,7 +778,7 @@ async function pasteClip() {
   } catch { toast('Allow clipboard access, or press Ctrl+V', true); }
 }
 async function loadAgents() {
-  try { const d = await api('/api/agents'); S.agents = d.agents; S.agentEnv = d.env_file; } catch {}
+  try { const d = await api('/api/agents'); S.agents = d.agents; S.agentEnv = d.env_file; S.home = d.home || '/'; } catch {}
 }
 const startAgent = a => spaceMachine(curSpace()) && a.id !== 'claude' ? toast('Other agents start on this server only for now', true) : a.id === 'claude' ? openBeside('claude', { cwd: cwdOf(S.focus) }) : openBeside('agent', { agent: a.id, cwd: cwdOf(S.focus) });
 async function agentsMenu(x, y) {
@@ -802,7 +803,7 @@ function showAgentInfo(a) {
   };
   if (a.install.length) { head('INSTALL'); para('Run in a shell on this server (the OPEN A SHELL button below). It uses the same account as your other terminals.'); a.install.forEach(code); }
   if (a.login.length) { head('SIGN IN'); a.login.forEach(l => l.startsWith('$ ') ? code(l.slice(2)) : para(l)); }
-  if (/_KEY|API/.test(a.login.join(' '))) para(`Keys go in ${S.agentEnv || '/root/.config/lcars-claude/agents.env'}, one KEY=value per line. Create the file yourself and make it readable only by root (chmod 600). Agents started from this menu get those values.`);
+  if (/_KEY|API/.test(a.login.join(' '))) para(`Keys go in ${S.agentEnv || 'the agents.env file'}, one KEY=value per line. Create the file yourself and make it readable only by you (chmod 600). Agents started from this menu get those values.`);
   if (a.account) { head('ACCOUNT'); para(a.account); }
   if (a.note) { head('NOTE'); para(a.note); }
   para('Steps are from the vendor documentation read on 2026-11-10. If one fails, check the vendor page.');
@@ -1455,7 +1456,7 @@ function startSession(kind) {
   const dlg = $('#new-dlg');
   $('#new-title').textContent = kind === 'claude' ? 'NEW CLAUDE SESSION' : 'NEW SHELL';
   const remote = !!spaceMachine(curSpace()), here = machineOf(S.focus || '') === spaceMachine(curSpace());
-  $('#new-name').value = ''; $('#new-cwd').value = remote ? (here && cwdOf(S.focus)) || '' : (here && cwdOf(S.focus)) || '/root'; $('#new-cwd').placeholder = remote ? 'empty: its home folder' : ''; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
+  $('#new-name').value = ''; $('#new-cwd').value = remote ? (here && cwdOf(S.focus)) || '' : (here && cwdOf(S.focus)) || S.home; $('#new-cwd').placeholder = remote ? 'empty: its home folder' : ''; dlg.returnValue = ''; dlg.dataset.kind = kind; dlg.showModal(); $('#new-name').focus();
 }
 function init() {
   $('#new-claude').onclick = () => startSession('claude');

@@ -732,7 +732,7 @@ async def set_doc(name: str, body: DocBody, on: str | None = None):
 
 @app.get("/api/agents")
 async def list_agents():
-    return {"agents": agents.listing(), "env_file": str(agents.ENV_FILE)}
+    return {"agents": agents.listing(), "env_file": str(agents.ENV_FILE), "home": str(Path.home())}
 
 
 @app.get("/api/machines")
