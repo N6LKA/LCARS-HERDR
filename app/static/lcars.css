@@ -250,7 +250,19 @@ dialog label.chk input{width:auto}
 .sec-head .pill{min-height:30px;padding:0 16px;font-size:14px}
 #mach-dlg{width:min(520px,94vw)}
 #sec-back{position:fixed;inset:0;background:#000a;z-index:58}
-#sec-dlg[open]{position:fixed;inset:0;margin:auto;height:fit-content;z-index:59;width:min(520px,94vw);max-height:90vh;overflow-y:auto}
+#sec-dlg[open]{position:fixed;inset:0;margin:auto;height:min(640px,88vh);z-index:59;width:min(900px,96vw);overflow:hidden}
+#sec-form{display:flex;flex-direction:column;height:100%;min-height:0}
+#sec-main{display:flex;gap:16px;flex:1;min-height:0}
+#sec-tabs{display:flex;flex-direction:column;gap:6px;flex:0 0 150px;padding-right:12px;border-right:2px solid #1c1c22;overflow-y:auto}
+#sec-tabs .pill{width:100%;justify-content:flex-start;text-align:left;opacity:.6}
+#sec-tabs .pill[hidden]{display:none}
+#sec-tabs .pill[aria-selected=true]{opacity:1;box-shadow:0 0 0 2px var(--tan,#ffcc99)}
+#sec-panels .row{justify-content:flex-start}
+#sec-panels{flex:1;min-width:0;overflow-y:auto;padding-right:4px}
+#sec-dlg section[data-tab]:not(.on){display:none}
+#sec-panels section:first-child,#sec-panels section.on:first-of-type{border-top:0}
+.sec-foot{margin-top:10px;flex:0 0 auto}
+@media (max-width:700px){#sec-dlg[open]{height:92vh}#sec-main{flex-direction:column;gap:8px}#sec-tabs{flex-direction:row;flex:0 0 auto;border-right:0;padding:0 0 8px;border-bottom:2px solid #1c1c22;overflow-x:auto}#sec-tabs .pill{width:auto;flex:0 0 auto}}
 .vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden}
 #sec-dlg section{border-top:2px solid #1c1c22;padding:10px 0 4px}
 #sec-dlg h4{margin:0 0 8px;color:var(--lilac);letter-spacing:.16em;font-size:14px}

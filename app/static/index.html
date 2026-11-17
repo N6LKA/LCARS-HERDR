@@ -131,25 +131,32 @@
 <dialog id="sec-dlg" aria-labelledby="sec-title" tabindex="-1">
   <div id="sec-form">
     <div class="sec-head"><h3 id="sec-title">SETTINGS</h3><button type="button" class="pill red" id="sec-out">SIGN OUT</button></div>
-    <section><h4>APPEARANCE</h4>
+    <div id="sec-main"><nav id="sec-tabs" role="tablist" aria-label="Settings sections">
+      <button type="button" role="tab" class="pill orange" data-tab="display">DISPLAY</button>
+      <button type="button" role="tab" class="pill sky" data-tab="alerts">ALERTS</button>
+      <button type="button" role="tab" class="pill lilac" data-tab="account">ACCOUNT</button>
+      <button type="button" role="tab" class="pill tan" data-tab="security">SECURITY</button>
+      <button type="button" role="tab" class="pill gold" id="sec-tab-users" data-tab="users" hidden>USERS</button>
+    </nav><div id="sec-panels">
+    <section data-tab="display"><h4>APPEARANCE</h4>
       <p class="dim">How LCARS looks. Saved to your account, so every device you sign in on follows it.</p>
       <div class="row" id="sec-themes"><button type="button" class="pill orange" data-theme="tng">TNG ERA</button><button type="button" class="pill sky" data-theme="picard">PICARD ERA</button><button type="button" class="pill lilac" data-theme="titan">TITAN DS</button></div>
       <p class="dim" id="sec-theme-msg"></p></section>
-    <section><h4>CLOCK</h4>
+    <section data-tab="display"><h4>CLOCK</h4>
       <p class="dim">The time in the bottom bar. Saved to your account like the look.</p>
       <div class="row" id="sec-clock"><button type="button" class="pill orange" data-clock="12">12 HOUR</button><button type="button" class="pill sky" data-clock="24">24 HOUR</button></div></section>
-    <section><h4>DEFAULT AGENT</h4>
+    <section data-tab="display"><h4>DEFAULT AGENT</h4>
       <p class="dim">What the NEW button and the tab and split commands start. Saved to your account. Other agents are always in MORE AGENTS.</p>
       <div class="row" id="sec-agent"></div></section>
-    <section><h4>NOTIFICATIONS</h4>
+    <section data-tab="alerts"><h4>NOTIFICATIONS</h4>
       <p class="dim" id="sec-notify-msg"></p>
       <div class="row"><button type="button" class="pill orange" id="sec-notify-on">TURN ON</button><button type="button" class="pill sky" id="sec-notify-test" hidden>SEND A TEST</button></div></section>
-    <section><h4>INTERFACE SOUNDS</h4>
+    <section data-tab="alerts"><h4>INTERFACE SOUNDS</h4>
       <p class="dim">Quiet beeps for what you do: a new session, a file sent, text copied, dictation, the link dropping or returning, and an agent taking your prompt. The alerts (needs you, stuck, done) are separate and follow the SOUND button. This device only.</p>
       <div class="row" id="sec-ui-sounds"><button type="button" class="pill orange" data-ui="on">ON</button><button type="button" class="pill sky" data-ui="off">OFF</button></div>
       <div class="row" id="sec-ui-vol"><button type="button" class="pill orange" data-vol="0.2">QUIET</button><button type="button" class="pill sky" data-vol="0.4">MEDIUM</button><button type="button" class="pill lilac" data-vol="0.7">LOUD</button></div>
       <p class="dim">Try them:</p><div class="row" id="sec-ui-try"></div></section>
-    <section><h4>ACCOUNT</h4>
+    <section data-tab="account"><h4>ACCOUNT</h4>
       <p class="dim" id="sec-who"></p>
       <form id="sec-nameform" autocomplete="off" action="#">
         <label>NEW USERNAME<input id="sec-newname" name="new-username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32"></label>
@@ -157,7 +164,7 @@
         <div class="row"><button class="pill orange" id="sec-name-go">CHANGE USERNAME</button></div>
       </form>
       <p class="dim" id="sec-name-msg"></p></section>
-    <section id="sec-users-sec" hidden><h4>USERS</h4>
+    <section id="sec-users-sec" data-tab="users" hidden><h4>USERS</h4>
       <p class="ip">Every user gets the same access to this server's terminals, which is a full shell. Add only people you trust.</p>
       <div id="sec-users"></div>
       <form id="sec-adduser" autocomplete="off" action="#">
@@ -166,7 +173,7 @@
         <div class="row"><button class="pill orange" id="sec-u-go">ADD USER</button></div>
       </form>
       <p class="dim" id="sec-u-msg"></p></section>
-    <section><h4>PASSWORD</h4>
+    <section data-tab="account"><h4>PASSWORD</h4>
       <form id="sec-pwform" autocomplete="on" action="#">
         <input class="vh" id="sec-hid-user" type="text" name="username" autocomplete="username" value="" readonly tabindex="-1" aria-hidden="true">
         <label>CURRENT<input id="sec-cur" name="current-password" type="password" autocomplete="current-password"></label>
@@ -175,7 +182,7 @@
         <div class="row"><button class="pill orange" id="sec-pw">CHANGE PASSWORD</button></div>
       </form>
       <p class="dim" id="sec-pw-msg"></p></section>
-    <section><h4>TWO-STEP LOGIN</h4>
+    <section data-tab="security"><h4>TWO-STEP LOGIN</h4>
       <p class="dim" id="sec-2fa-state"></p>
       <form id="sec-2faform" autocomplete="on" action="#">
         <div id="sec-2fa-setup" hidden>
@@ -188,9 +195,10 @@
         <div class="row"><button class="pill orange" id="sec-2fa-go">SET UP 2FA</button></div>
       </form>
       <p class="dim" id="sec-2fa-msg"></p></section>
-    <section><h4>SIGNED-IN DEVICES</h4><div id="sec-sessions"></div>
+    <section data-tab="security"><h4>SIGNED-IN DEVICES</h4><div id="sec-sessions"></div>
       <div class="row"><button type="button" class="pill tan" id="sec-others">SIGN OUT OTHER DEVICES</button></div></section>
-    <div class="row"><button type="button" class="pill gray" id="sec-close">CLOSE</button></div>
+    </div></div>
+    <div class="row sec-foot"><button type="button" class="pill gray" id="sec-close">CLOSE</button></div>
   </div>
 </dialog>
 <dialog id="mach-dlg">

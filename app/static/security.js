@@ -9,14 +9,20 @@
   };
   const say = (id, text, bad) => { const e = $(id); e.textContent = text || ''; e.style.color = bad ? '#ff7766' : ''; };
   const when = t => new Date(t * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-  let on = false, setting = false;
+  let on = false, setting = false, tab = 'display';
+  function showTab(t) {
+    tab = t;
+    for (const b of document.querySelectorAll('#sec-tabs [data-tab]')) { const sel = b.dataset.tab === t; b.setAttribute('aria-selected', sel); b.tabIndex = sel ? 0 : -1; }
+    for (const e of document.querySelectorAll('#sec-panels section[data-tab]')) e.classList.toggle('on', e.dataset.tab === t);
+    $('#sec-panels').scrollTop = 0;
+  }
 
   async function refresh() {
     const s = await api('/api/auth/status');
     on = s.totp;
     $('#sec-who').textContent = s.user ? `Signed in as ${s.user} (${s.role}).` : 'This session came from a program on this machine, not an account.';
     $('#sec-hid-user').value = s.user || '';
-    $('#sec-users-sec').hidden = s.role !== 'admin';
+    $('#sec-users-sec').hidden = s.role !== 'admin'; $('#sec-tab-users').hidden = s.role !== 'admin'; if ($('#sec-users-sec').hidden && tab === 'users') showTab('display');
     if (s.users) $('#sec-users').replaceChildren(...s.users.map(x => {
       const d = document.createElement('div'); d.className = 'urow';
       const t = document.createElement('span'); t.textContent = `${x.username} · ${x.role} · 2FA ${x.totp ? 'on' : 'off'}${x.signed_in ? ' · signed in' : ''}`; d.append(t);
@@ -37,7 +43,7 @@
     for (const i of ['#sec-cur', '#sec-new', '#sec-new2', '#sec-code', '#sec-newname', '#sec-name-pw', '#sec-u-name', '#sec-u-pw']) $(i).value = '';
     for (const m of ['#sec-pw-msg', '#sec-2fa-msg', '#sec-name-msg', '#sec-u-msg']) say(m, '');
     setting = false; $('#sec-recovery').hidden = true;
-    $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-dlg').scrollTop = 0; $('#sec-dlg').focus({ preventScroll: true }); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
+    showTab(tab); $('#sec-back').hidden = false; $('#sec-dlg').show(); $('#sec-dlg').focus({ preventScroll: true }); refresh().catch(e => say('#sec-2fa-msg', e.message, true));
   }
 
   async function changeName() {
@@ -76,7 +82,13 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     $('#btn-settings').onclick = open;
-    if (new URLSearchParams(location.search).has('settings')) { history.replaceState(null, '', '/'); setTimeout(open, 600); }   // right after choosing a password: offer 2FA
+    for (const b of document.querySelectorAll('#sec-tabs [data-tab]')) b.onclick = () => showTab(b.dataset.tab);
+    $('#sec-tabs').addEventListener('keydown', ev => {
+      const d = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[ev.key]; if (!d) return;
+      const bs = [...document.querySelectorAll('#sec-tabs [data-tab]')].filter(b => !b.hidden), i = bs.findIndex(b => b.dataset.tab === tab);
+      const n = bs[(i + d + bs.length) % bs.length]; showTab(n.dataset.tab); n.focus(); ev.preventDefault();
+    });
+    if (new URLSearchParams(location.search).has('settings')) { history.replaceState(null, '', '/'); tab = 'security'; setTimeout(open, 600); }   // right after choosing a password: offer 2FA
     $('#side-settings').onclick = () => { document.body.classList.remove('side-open'); open(); };
     const shut = () => { $('#sec-dlg').close(); $('#sec-back').hidden = true; $('#sec-rc').textContent = ''; };
     $('#sec-close').onclick = shut; $('#sec-back').onclick = shut;
