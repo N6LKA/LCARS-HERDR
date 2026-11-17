@@ -85,6 +85,10 @@
         <h2>THIS TAB IS EMPTY</h2>
         <p>Start an agent or a shell with the buttons at left, or press <b>Ctrl+Shift+P</b> for every command.</p>
       </div>
+      <div id="coredown" hidden role="alert">
+        <h2>CAN'T REACH HERDR-CORE</h2>
+        <p>LCARS shows the terminals that herdr-core keeps running, and it is not answering.<br>On this machine, run <b>hc ls</b>. If that fails, start herdr-core, and check that LCARS runs as the same user.<br>This page reconnects by itself.</p>
+      </div>
       <div id="keybar" aria-label="Touch keys">
         <button data-k="esc">ESC</button><button data-k="tab">TAB</button>
         <button data-k="ctrl-c">^C</button><button data-k="up">▲</button><button data-k="down">▼</button>

@@ -789,7 +789,10 @@ async def ws_events(ws: WebSocket):
 
 async def _ws_send_error(ws: WebSocket, err: Exception):
     try:
-        await ws.send_text(json.dumps({"type": "error", "error": str(err)}))
+        msg = {"type": "error", "error": str(err)}
+        if isinstance(err, (FileNotFoundError, ConnectionError)):   # the core's socket is missing or refused us
+            msg.update(code="core_down", error="herdr-core is not running or not reachable")
+        await ws.send_text(json.dumps(msg))
         await ws.close()
     except Exception:
         pass

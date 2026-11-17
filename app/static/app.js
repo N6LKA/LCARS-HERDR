@@ -1402,13 +1402,14 @@ function connectEvents() {
   ws.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'snapshot') $('#coredown').hidden = true;
     if (m.type === 'snapshot') $('#conn').title = `Live connection to the server (event ${m.seq})`;
     else if (m.type === 'notification' && m.method === 'event') {
       const e = m.params || {};
       if (e.type === 'doc') { if (e.data && e.data.name === DOC) { S.remoteVersion = Math.max(S.remoteVersion, e.data.version || 0); maybeSync(); } }
       else { clearTimeout(refreshT); refreshT = setTimeout(() => refreshTerms().catch(() => {}), 120); }
     }
-    else if (m.type === 'error') toast(m.error, true);
+    else if (m.type === 'error') { if (m.code === 'core_down') $('#coredown').hidden = false; else toast(m.error, true); }
   };
   ws.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
