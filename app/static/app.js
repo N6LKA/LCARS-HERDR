@@ -72,6 +72,7 @@ async function api(path, opts = {}) {
 const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 let toastT;
 function toast(msg, err = false) {
+  if (err === true && typeof ui === 'function') ui('denied');   // an error: a short refusal beep (alerts pass 'alert' and have their own sound)
   const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => (t.className = ''), 3200);
 }
@@ -346,6 +347,11 @@ const dictToggle = () => (dictation.on ? dictStop() : dictStart());
 function stuckTick() {   // being stuck is a matter of time passing, not of an event, so look again now and then
   let changed = false;
   for (const t of S.terms.values()) { const now = stateOf(t), was = S.prev.get(t.address); if (was !== now) { statusChanged(t, was, now); S.prev.set(t.address, now); changed = true; } }
+  if (redAlertOn()) for (const t of S.terms.values()) {   // still waiting on you after a long time: Red Alert, once for that wait
+    if (stateOf(t) !== 'blocked' || !isAgent(t) || !t.status_ms || Date.now() - t.status_ms < redAlertMin() * 60000) continue;
+    const k = t.address + ':' + t.status_ms; if (raSeen.has(k)) continue; raSeen.add(k);
+    redAlert(); toast(`${labelOf(t)} HAS NEEDED YOU FOR ${redAlertMin()} MINUTES`, 'alert'); notify(t, `${labelOf(t)} still needs you`, `It has been waiting for your answer for ${redAlertMin()} minutes.`);
+  }
   if (changed) render();
 }
 // Shows the two alert looks on the panes of this tab for a few seconds, so you can see them without waiting for a real agent.
@@ -358,7 +364,7 @@ function previewGlows() {
   if (!addrs.length) return toast('Open a pane first', true);
   if (addrs.length >= 2) {
     show(new Map([[addrs[0], 'stuck'], [addrs[1], 'blocked']]));
-    toast('PREVIEW · FIRST PANE MAY BE STUCK (YELLOW) · SECOND NEEDS YOU (RED)'); previewT = setTimeout(stop, 15000);
+    toast('PREVIEW · FIRST PANE MAY BE STUCK (YELLOW) · SECOND NEEDS YOU (RED)'); redAlert(); previewT = setTimeout(stop, 15000);
   } else {   // one pane: show the two looks one after the other
     show(new Map([[addrs[0], 'stuck']])); toast('PREVIEW · MAY BE STUCK (YELLOW)');
     previewT = setTimeout(() => { show(new Map([[addrs[0], 'blocked']])); toast('PREVIEW · NEEDS YOU (RED)'); previewT = setTimeout(stop, 8000); }, 8000);
@@ -366,8 +372,8 @@ function previewGlows() {
 }
 function statusChanged(t, was, now) {
   if (now === 'working' && t.address === S.focus && isAgent(t) && (was === 'idle' || was === 'blocked' || was === 'done' || was === 'live')) ui('working');   // the agent took what you sent
-  if (now === 'blocked') { play('console_warning'); toast(`${labelOf(t)} NEEDS YOU`, true); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
-  else if (now === 'stuck') { play('stuck_alarm'); toast(`${labelOf(t)} MAY BE STUCK`, true); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
+  if (now === 'blocked') { play('console_warning'); toast(`${labelOf(t)} NEEDS YOU`, 'alert'); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
+  else if (now === 'stuck') { play('stuck_alarm'); toast(`${labelOf(t)} MAY BE STUCK`, 'alert'); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
   else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); notify(t, `${labelOf(t)} is done`, 'It has finished.'); }
 }
 // Browser notifications, for when this page is not the one you are looking at. Chosen per device in Settings > Notifications.
@@ -399,20 +405,38 @@ async function notifyToggle() {
   if (Notification.permission === 'granted') { try { localStorage.setItem(NOTIFY_KEY, '1'); } catch {} notify({ address: 'test' }, 'LCARS notifications are on', 'You will see one like this when an agent needs you.', true); }
   notifyUi();
 }
+// Red Alert: for the serious things only. herdr-core is down, or an agent has needed you for a long time. Settings > Alerts.
+const RA_STEPS = [5, 10, 20];
+const redAlertOn = () => { try { return localStorage.getItem('lcars-redalert') !== '0'; } catch { return true; } };
+const redAlertMin = () => { try { const v = parseInt(localStorage.getItem('lcars-redalert-min'), 10); return RA_STEPS.includes(v) ? v : 10; } catch { return 10; } };
+const raSeen = new Set();
+function redAlert(force) { if (force || redAlertOn()) play('tng_red_alert3', force); }
+function redAlertUi() {
+  const on = redAlertOn(), m = redAlertMin();
+  document.querySelectorAll('#sec-ra-on button').forEach(b => { const sel = (b.dataset.ra === 'on') === on; b.setAttribute('aria-pressed', sel); b.textContent = (sel ? '\u2713 ' : '') + b.dataset.label; });
+  document.querySelectorAll('#sec-ra-min button').forEach(b => { const sel = parseInt(b.dataset.min, 10) === m; b.setAttribute('aria-pressed', sel); b.textContent = (sel ? '\u2713 ' : '') + b.dataset.label; });
+}
+function redAlertInit() {
+  document.querySelectorAll('#sec-ra-on button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { try { localStorage.setItem('lcars-redalert', b.dataset.ra === 'on' ? '1' : '0'); } catch {} redAlertUi(); }; });
+  document.querySelectorAll('#sec-ra-min button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { try { localStorage.setItem('lcars-redalert-min', b.dataset.min); } catch {} redAlertUi(); }; });
+  const t = $('#sec-ra-try'); if (t) t.onclick = () => redAlert(true);
+  redAlertUi();
+}
 const sounds = {};
-function play(name) {
-  if (!S.sound) return;
+function play(name, force) {
+  if (!S.sound && !force) return;
   try {
     const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.mp3`));
-    a.currentTime = 0; a.volume = name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : 0.7; a.play().catch(() => {});
+    a.currentTime = 0; a.volume = name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : name === 'tng_red_alert3' ? 0.6 : 0.7; a.play().catch(() => {});
   } catch {}
 }
 // ── interface sounds: quiet beeps for what you do (the alerts above are separate). This device only; Settings > Interface sounds.
 // some events have several sounds that take turns, so the same one does not repeat every time (never the same one twice running)
 const UI_VARIANTS = { working: ['input_ok_1_clean', 'input_ok_2_clean', 'input_ok_4', 'keyok6'] };
 const UI_SOUNDS = { working: ['input_ok_1_clean'], open: ['keyok3'], sent: ['padd_3'], copy: ['keyok2'], micon: ['keyok4', 1.3], micoff: ['keyok4', 0.75],
-  linkdown: ['padd_3', 0.7], linkup: ['padd_3', 1.3], close: ['keyok5', 0.7] };
-const UI_LABEL = { working: 'PROMPT TAKEN', open: 'NEW SESSION', sent: 'FILE SENT', copy: 'COPIED', micon: 'MIC ON', micoff: 'MIC OFF', linkdown: 'LINK LOST', linkup: 'LINK BACK', close: 'CLOSED' };
+  linkdown: ['padd_3', 0.7], linkup: ['padd_3', 1.3], close: ['keyok5', 0.7],
+  denied: ['input_failed_clean'], tab: ['keyok1'], saved: ['computerbeep_1'], palopen: ['padd_2'], palrun: ['keyok4'], space: ['tng_chime_clean'], machine: ['tng_chirp_clean'], hello: ['computer_activate'] };
+const UI_LABEL = { working: 'PROMPT TAKEN', open: 'NEW SESSION', sent: 'FILE SENT', copy: 'COPIED', micon: 'MIC ON', micoff: 'MIC OFF', linkdown: 'LINK LOST', linkup: 'LINK BACK', close: 'CLOSED', denied: 'ERROR', tab: 'TAB', saved: 'SAVED', palopen: 'PALETTE', palrun: 'COMMAND RUN', space: 'NEW SPACE', machine: 'MACHINE ADDED', hello: 'SIGN-IN' };
 const uiOn = () => { try { return localStorage.getItem('lcars-ui-sounds') !== '0'; } catch { return true; } };
 const uiVol = () => { try { const v = parseFloat(localStorage.getItem('lcars-ui-volume')); return v > 0 && v <= 1 ? v : 0.4; } catch { return 0.4; } };
 const uiLast = {}, uiVariant = {};
@@ -684,7 +708,7 @@ async function closeSpace(id) {
   commit(); await Promise.all(addrs.map(endTerminal));
 }
 function selectSpace(id) { if (S.spaces.some(s => s.id === id)) { S.active = id; S.focus = leaves((curTab() || {}).root)[0] || null; commit(); focusPane(S.focus); } }
-function selectTab(id) { const sp = curSpace(); if (sp.tabs.some(t => t.id === id)) { sp.tab = id; S.focus = leaves(curTab().root)[0] || null; commit(); focusPane(S.focus); } }
+function selectTab(id) { const sp = curSpace(); if (sp.tabs.some(t => t.id === id)) { if (sp.tab !== id) ui('tab'); sp.tab = id; S.focus = leaves(curTab().root)[0] || null; commit(); focusPane(S.focus); } }
 function stepSpace(d) { const i = S.spaces.indexOf(curSpace()); selectSpace(S.spaces[(i + d + S.spaces.length) % S.spaces.length].id); }
 function stepTab(d) { const sp = curSpace(), i = sp.tabs.findIndex(t => t.id === sp.tab); selectTab(sp.tabs[(i + d + sp.tabs.length) % sp.tabs.length].id); }
 function moveInList(list, from, to) { if (from === to || from < 0 || to < 0) return; const [x] = list.splice(from, 1); list.splice(to, 0, x); }
@@ -729,7 +753,7 @@ def('sound.toggle', 'Turn sound on or off', () => toggleSound(), 'App');
 async function newSpaceOn(machine) {
   if (machine) { const mv = machineView(machine); if (!mv || mv.state !== 'connected') return toast(`${machineLabel(machine)} is not connected`, true); }
   const n = await ask('NEW SPACE', '', 'name (optional)'); if (n === null) return;
-  const sp = newSpace(n ? n.toUpperCase() : null, machine); S.spaces.push(sp); S.active = sp.id; S.focus = null; collapsedMachines.delete(machine); commit();
+  const sp = newSpace(n ? n.toUpperCase() : null, machine); S.spaces.push(sp); S.active = sp.id; S.focus = null; collapsedMachines.delete(machine); commit(); ui('space');
 }
 def('space.new', 'New space', () => newSpaceOn(spaceMachine(curSpace())), 'Spaces');
 def('space.rename', 'Rename space', id => renameSpace(typeof id === 'string' ? id : undefined), 'Spaces');
@@ -986,7 +1010,7 @@ function movePick(d) {
 }
 let palSel = 0, palItems = [];
 function openPalette() {
-  const d = $('#pal-dlg'), input = $('#pal-input'); input.value = ''; fillPalette(''); d.showModal(); input.focus();
+  ui('palopen'); const d = $('#pal-dlg'), input = $('#pal-input'); input.value = ''; fillPalette(''); d.showModal(); input.focus();
   $('#pal-list').scrollTop = 0;
 }
 const PAL_ORDER = ['App', 'Spaces', 'Tabs', 'Panes', 'Agents', 'Terminal'];
@@ -1023,7 +1047,7 @@ function fillPalette(q) {
     list.appendChild(note);
   }
 }
-function runPalette(i) { const c = palItems[i]; if (!c) return; $('#pal-dlg').close(); setTimeout(() => run(c.id), 30); }
+function runPalette(i) { const c = palItems[i]; if (!c) return; ui('palrun'); $('#pal-dlg').close(); setTimeout(() => run(c.id), 30); }
 function movePal(d) {
   const rows = [...$('#pal-list').querySelectorAll('.hrow.cmd')]; if (!rows.length) return;
   rows[palSel].classList.remove('sel'); palSel = (palSel + d + rows.length) % rows.length;
@@ -1486,14 +1510,14 @@ function connectEvents() {
   ws.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'snapshot') { $('#coredown').hidden = true; if (linkDown) ui('linkup'); linkDown = false; linkHealthy = true; }
+    if (m.type === 'snapshot') { if (/\/login/.test(document.referrer) && !sessionStorage.getItem('lcars-hello')) { try { sessionStorage.setItem('lcars-hello', '1'); } catch {} ui('hello'); } $('#coredown').hidden = true; if (linkDown) ui('linkup'); linkDown = false; linkHealthy = true; }
     if (m.type === 'snapshot') $('#conn').title = `Live connection to the server (event ${m.seq})`;
     else if (m.type === 'notification' && m.method === 'event') {
       const e = m.params || {};
       if (e.type === 'doc') { if (e.data && e.data.name === DOC) { S.remoteVersion = Math.max(S.remoteVersion, e.data.version || 0); maybeSync(); } }
       else { clearTimeout(refreshT); refreshT = setTimeout(() => refreshTerms().catch(() => {}), 120); }
     }
-    else if (m.type === 'error') { if (m.code === 'core_down') $('#coredown').hidden = false; else toast(m.error, true); }
+    else if (m.type === 'error') { if (m.code === 'core_down') { if ($('#coredown').hidden) redAlert(); $('#coredown').hidden = false; } else toast(m.error, true); }
   };
   ws.onclose = () => { if (linkHealthy && !linkDown) { linkDown = true; ui('linkdown'); } setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
@@ -1581,7 +1605,7 @@ async function submitMachine() {
     await post('/api/machines', { name, target, install: $('#mach-install').checked });
     $('#mach-dlg').close();
     const sp = newSpace(null, name); S.spaces.push(sp); S.active = sp.id; S.focus = null; collapsedMachines.delete(name); commit();
-    await refreshTerms().catch(() => {}); toast(`${machineLabel(name)} CONNECTED`);
+    await refreshTerms().catch(() => {}); ui('machine'); toast(`${machineLabel(name)} CONNECTED`);
   } catch (e) {
     msg.className = 'err'; msg.textContent = e.message;
     if (/log ?in|permission|publickey|password|host key|reach|denied/i.test(e.message)) keyHelp($('#mach-help'), $('#mach-cmd'));
@@ -1658,7 +1682,7 @@ function init() {
   $('#sec-notify-on').onclick = notifyToggle;
   $('#sec-notify-test').onclick = () => notify({ address: 'test' }, 'Test notification', 'This is what an agent alert looks like.', true);
   for (const id of ['#btn-settings', '#side-settings']) $(id).addEventListener('click', notifyUi);   // refresh the state each time Settings opens
-  notifyUi(); uiSoundsInit();
+  notifyUi(); uiSoundsInit(); redAlertInit();
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { const d = ev.data || {}; if (d.type === 'focus-agent' && d.addr && d.addr !== 'test') focusAddr(d.addr); });
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));

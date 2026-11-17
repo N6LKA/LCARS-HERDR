@@ -52,9 +52,9 @@
     if (ag && ag !== agentGet()) agentApply(ag); else if (!ag && agentGet()) agentSave(agentGet());
   }).catch(() => {});
   document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('#sec-themes button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { apply(b.dataset.theme); saveToAccount(b.dataset.theme); }; });
+    document.querySelectorAll('#sec-themes button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { apply(b.dataset.theme); saveToAccount(b.dataset.theme); if (window.ui) ui('saved'); }; });
     mark();
-    document.querySelectorAll('#sec-clock button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { clockApply(b.dataset.clock); saveClock(b.dataset.clock); }; });
+    document.querySelectorAll('#sec-clock button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { clockApply(b.dataset.clock); saveClock(b.dataset.clock); if (window.ui) ui('saved'); }; });
     clockMark();
   });
 })();

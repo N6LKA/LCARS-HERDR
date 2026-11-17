@@ -151,8 +151,14 @@
     <section data-tab="alerts"><h4>NOTIFICATIONS</h4>
       <p class="dim" id="sec-notify-msg"></p>
       <div class="row"><button type="button" class="pill orange" id="sec-notify-on">TURN ON</button><button type="button" class="pill sky" id="sec-notify-test" hidden>SEND A TEST</button></div></section>
+    <section data-tab="alerts"><h4>RED ALERT</h4>
+      <p class="dim">Saved for the serious things: herdr-core is down, or an agent has needed you for a long time. It follows the SOUND button, and plays once for each wait. This device only.</p>
+      <div class="row" id="sec-ra-on"><button type="button" class="pill orange" data-ra="on">ON</button><button type="button" class="pill sky" data-ra="off">OFF</button></div>
+      <p class="dim">Sound it when an agent has needed you for:</p>
+      <div class="row" id="sec-ra-min"><button type="button" class="pill orange" data-min="5">5 MIN</button><button type="button" class="pill sky" data-min="10">10 MIN</button><button type="button" class="pill lilac" data-min="20">20 MIN</button></div>
+      <div class="row"><button type="button" class="pill red" id="sec-ra-try">TRY RED ALERT</button></div></section>
     <section data-tab="alerts"><h4>INTERFACE SOUNDS</h4>
-      <p class="dim">Quiet beeps for what you do: a new session, a file sent, text copied, dictation, the link dropping or returning, and an agent taking your prompt. The alerts (needs you, stuck, done) are separate and follow the SOUND button. This device only.</p>
+      <p class="dim">Quiet Star Trek beeps for what you do: a new session or space, a file sent, text copied, dictation, switching tabs, the command palette, saved settings, an error, signing in, the link dropping or returning, and an agent taking your prompt. The alerts (needs you, stuck, done) are separate and follow the SOUND button. This device only.</p>
       <div class="row" id="sec-ui-sounds"><button type="button" class="pill orange" data-ui="on">ON</button><button type="button" class="pill sky" data-ui="off">OFF</button></div>
       <div class="row" id="sec-ui-vol"><button type="button" class="pill orange" data-vol="0.2">QUIET</button><button type="button" class="pill sky" data-vol="0.4">MEDIUM</button><button type="button" class="pill lilac" data-vol="0.7">LOUD</button></div>
       <p class="dim">Try them:</p><div class="row" id="sec-ui-try"></div></section>

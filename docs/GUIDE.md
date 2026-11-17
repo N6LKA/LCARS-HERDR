@@ -78,7 +78,7 @@ always. Support for more agents can be added in `app/agents.py` (the `caps` entr
   **Preview the pane alert glows**: the first pane shows the stuck look and the second the needs-you look for 15 seconds
   (with one pane, it shows one after the other). Run it again to stop early. The colour and bars also show
   in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off: a console warning tone when an agent needs you, an
-  alarm tone when one may be stuck, and a short chime when one is done.
+  alarm tone when one may be stuck, and a short chime when one is done. **Red Alert** is kept for the serious cases: herdr-core going down, or an agent that has needed you for 5, 10 or 20 minutes (set in Settings > Alerts, with an on/off switch and a TRY button). It plays once per wait.
 
 The small code at the right of a pane header is the terminal's real address (for example `t7`, or `name/t7` on another machine),
 useful with the `hc` command.
@@ -135,9 +135,10 @@ Open **SETTINGS** in the top bar.
 
 - **Appearance**: TNG era, Picard era or Titan DS. Saved to your account.
 - **Clock**: 12 or 24 hour. Saved to your account.
+- **Red Alert**: on or off, and how long an agent may wait for you (5, 10 or 20 minutes) before it sounds. Saved on this device.
 - **Interface sounds**: quiet beeps for what you do, separate from the alerts. A beep when a new session opens, when the focused
   agent takes your prompt and starts working (one of four beeps, taking turns), when a file is sent, when text is copied, when dictation turns on (rising) or off
-  (falling), when a pane or agent ends, and a low or high beep when the link drops or returns. Switch them on or off, pick
+  (falling), when a pane or agent ends, a low or high beep when the link drops or returns, a refusal beep on an error, a tap when you switch tabs, the palette opens or runs a command, or a setting is saved, a chime for a new space, a communicator chirp when a machine is added, and a start-up tone after you sign in. Switch them on or off, pick
   QUIET, MEDIUM or LOUD, and try each one. Saved on this device. The SOUND button in the bottom strip silences everything.
 - **Notifications**: turn on browser notifications for this device. When an agent needs you, may be stuck or is done, and you
   are looking at another window or tab, you get a notification, and tapping it brings LCARS forward on that agent. It needs
