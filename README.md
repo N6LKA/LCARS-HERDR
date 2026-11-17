@@ -1,6 +1,6 @@
 # LCARS-HERDR
 
-![License](https://img.shields.io/badge/License-GPLv3-lightgrey)
+![Release](https://img.shields.io/github/v/release/N6LKA/LCARS-HERDR) ![License](https://img.shields.io/badge/License-GPLv3-lightgrey)
 
 LCARS-HERDR is a Star Trek LCARS-styled web console for the coding-agent terminals running on a server. Open it in any browser, on a
 desktop or a phone, and work with Claude Code, GitHub Copilot, Codex and other agents in real terminals that keep running
@@ -177,6 +177,10 @@ LCARS is a shell on the machine. Anyone who signs in can run anything the servic
 trust, keep 2FA on, and never expose it directly to the internet. Put it behind HTTPS and, ideally, a second layer such as a
 VPN or an authenticating proxy. Keep each agent's own approval prompts on. Accounts are kept in `auth.json` (mode 600) as
 password hashes; sessions are stored hashed and can be revoked in Settings.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to try a change. Report security problems privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Licence
 
