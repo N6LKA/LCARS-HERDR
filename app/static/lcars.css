@@ -256,6 +256,7 @@ dialog label.chk input{width:auto}
 #mach-msg{margin:4px 0 8px;min-height:1.2em}#mach-msg.err{color:#ff7766;font-size:14px}
 dialog input{font:inherit;font-size:16px;letter-spacing:.04em;text-transform:none;padding:8px 10px;border:0;border-radius:12px;background:#1f1530;color:var(--tan);width:100%}
 dialog .row{display:flex;gap:8px;justify-content:flex-end}dialog .pill{border-radius:16px}
+#sec-ui-try{flex-wrap:wrap;justify-content:flex-start}
 #pal-dlg,#pick-dlg{padding:12px;min-width:min(560px,94vw);top:12vh;margin:0 auto;border-radius:0 22px 0 22px}
 #pal-dlg{width:min(640px,94vw);min-width:0;padding:16px 20px;top:7vh;max-height:86vh}
 #pal-dlg h3{margin:0 0 10px}

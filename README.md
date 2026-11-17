@@ -20,7 +20,8 @@ following its own instructions, then come back here.
   pane by its header to move or swap it, zoom, rename, close. Closing a pane gives its space to its neighbour.
 - **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars, a warning tone when
   an agent needs you, an alarm tone when one may be stuck, and optional browser notifications, so you can see which agent
-  is waiting for you without opening it.
+  is waiting for you without opening it. Quiet interface beeps (new session, prompt taken, file sent, copy, dictation, link) can
+  be switched off or turned down.
 - **Any coding agent**: pick a default agent (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
   Antigravity or Gemini CLI) and start any installed one beside the focused pane, with install and sign-in steps for the ones
   that are not installed yet. Everything works with every agent; a few extras, such as the resume list, are optional add-ons

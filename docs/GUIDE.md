@@ -132,6 +132,10 @@ Open **SETTINGS** in the top bar.
 
 - **Appearance**: TNG era, Picard era or Titan DS. Saved to your account.
 - **Clock**: 12 or 24 hour. Saved to your account.
+- **Interface sounds**: quiet beeps for what you do, separate from the alerts. A beep when a new session opens, when the focused
+  agent takes your prompt and starts working, when a file is sent, when text is copied, when dictation turns on (rising) or off
+  (falling), when a pane or agent ends, and a low or high beep when the link drops or returns. Switch them on or off, pick
+  QUIET, MEDIUM or LOUD, and try each one. Saved on this device. The SOUND button in the bottom strip silences everything.
 - **Notifications**: turn on browser notifications for this device. When an agent needs you, may be stuck or is done, and you
   are looking at another window or tab, you get a notification, and tapping it brings LCARS forward on that agent. It needs
   HTTPS or localhost, and works on a phone once LCARS is installed as an app. which agent the NEW button, the tab menu and the split commands start. Saved to your account.

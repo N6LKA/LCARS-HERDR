@@ -275,6 +275,7 @@ function dictUi() {
   if (!dictation.on) { $('#dictate').hidden = true; $('#dictate').textContent = ''; }
 }
 function dictStop(why) {
+  if (dictation.on) ui('micoff');
   dictation.on = false; dictation.starting = false; dictation.trail = false;
   try { dictation.rec && dictation.rec.stop(); } catch {}
   dictation.rec = null; dictUi(); if (why) toast(why, true);
@@ -337,7 +338,7 @@ async function dictStart() {
   rec.onend = () => { if (dictation.on && dictation.rec === rec) { try { rec.start(); } catch { dictStop('Dictation stopped'); } } };   // it stops by itself after a pause: carry on
   dictation.rec = rec; dictation.on = true; dictation.starting = false;
   try { rec.start(); } catch (e) { return dictStop(e.message || 'Could not start the microphone'); }
-  dictUi(); toast('LISTENING · TEXT GOES TO THE FOCUSED PANE');
+  dictUi(); ui('micon'); toast('LISTENING · TEXT GOES TO THE FOCUSED PANE');
 }
 const dictToggle = () => (dictation.on ? dictStop() : dictStart());
 function stuckTick() {   // being stuck is a matter of time passing, not of an event, so look again now and then
@@ -346,6 +347,7 @@ function stuckTick() {   // being stuck is a matter of time passing, not of an e
   if (changed) render();
 }
 function statusChanged(t, was, now) {
+  if (now === 'working' && t.address === S.focus && isAgent(t) && (was === 'idle' || was === 'blocked' || was === 'done' || was === 'live')) ui('working');   // the agent took what you sent
   if (now === 'blocked') { play('console_warning'); toast(`${labelOf(t)} NEEDS YOU`, true); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
   else if (now === 'stuck') { play('stuck_alarm'); toast(`${labelOf(t)} MAY BE STUCK`, true); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
   else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); notify(t, `${labelOf(t)} is done`, 'It has finished.'); }
@@ -387,17 +389,46 @@ function play(name) {
     a.currentTime = 0; a.volume = name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : 0.7; a.play().catch(() => {});
   } catch {}
 }
+// ── interface sounds: quiet beeps for what you do (the alerts above are separate). This device only; Settings > Interface sounds.
+const UI_SOUNDS = { working: ['input_ok_1_clean'], open: ['keyok3'], sent: ['padd_3'], copy: ['keyok2'], micon: ['keyok4', 1.3], micoff: ['keyok4', 0.75],
+  linkdown: ['padd_3', 0.7], linkup: ['padd_3', 1.3], close: ['keyok5', 0.7] };
+const UI_LABEL = { working: 'PROMPT TAKEN', open: 'NEW SESSION', sent: 'FILE SENT', copy: 'COPIED', micon: 'MIC ON', micoff: 'MIC OFF', linkdown: 'LINK LOST', linkup: 'LINK BACK', close: 'CLOSED' };
+const uiOn = () => { try { return localStorage.getItem('lcars-ui-sounds') !== '0'; } catch { return true; } };
+const uiVol = () => { try { const v = parseFloat(localStorage.getItem('lcars-ui-volume')); return v > 0 && v <= 1 ? v : 0.4; } catch { return 0.4; } };
+const uiLast = {};
+function ui(name, force) {
+  if (!force && (!S.sound || !uiOn())) return;
+  const d = UI_SOUNDS[name], now = Date.now(); if (!d || (!force && now - (uiLast[name] || 0) < 250)) return;   // closing five terminals is one sound, not five
+  uiLast[name] = now;
+  try {
+    const a = new Audio(`/static/audio/${d[0]}.mp3`); a.volume = uiVol();
+    if (d[1]) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = d[1]; }   // a rising or falling version of the same beep
+    a.play().catch(() => {});
+  } catch {}
+}
+function uiSoundsUi() {
+  const on = uiOn(), v = uiVol();
+  document.querySelectorAll('#sec-ui-sounds button').forEach(b => { const sel = (b.dataset.ui === 'on') === on; b.setAttribute('aria-pressed', sel); b.textContent = (sel ? '\u2713 ' : '') + (b.dataset.label || (b.dataset.label = b.textContent)); });
+  document.querySelectorAll('#sec-ui-vol button').forEach(b => { const sel = Math.abs(parseFloat(b.dataset.vol) - v) < 0.05; b.setAttribute('aria-pressed', sel); b.textContent = (sel ? '\u2713 ' : '') + (b.dataset.label || (b.dataset.label = b.textContent)); });
+}
+function uiSoundsInit() {
+  document.querySelectorAll('#sec-ui-sounds button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { try { localStorage.setItem('lcars-ui-sounds', b.dataset.ui === 'on' ? '1' : '0'); } catch {} uiSoundsUi(); if (uiOn()) ui('open', true); }; });
+  document.querySelectorAll('#sec-ui-vol button').forEach(b => { b.dataset.label = b.textContent; b.onclick = () => { try { localStorage.setItem('lcars-ui-volume', b.dataset.vol); } catch {} uiSoundsUi(); ui('open', true); }; });
+  const row = $('#sec-ui-try'); row.textContent = '';
+  for (const k of Object.keys(UI_SOUNDS)) { const b = document.createElement('button'); b.type = 'button'; b.className = 'pill lilac small'; b.textContent = UI_LABEL[k]; b.onclick = () => ui(k, true); row.appendChild(b); }
+  uiSoundsUi();
+}
 async function createTerminal(kind, opt = {}) {
   if (kind !== 'shell' && kind !== 'claude' && kind !== 'agent') { opt = { ...opt, agent: kind }; kind = 'agent'; }   // any other word is an agent id
   const machine = opt.machine !== undefined ? opt.machine : spaceMachine(curSpace());
   // a folder belongs to one machine: use it only if it was typed, or comes from a pane on the same machine
   const cwd = opt.cwd && (opt.explicit || opt.machine !== undefined || machineOf(S.focus || '') === machine) ? opt.cwd : undefined;
   const t = await post('/api/terminals', { kind, agent: opt.agent || undefined, name: opt.name || undefined, cwd: cwd || undefined, on: machine || undefined, resume: opt.resume || undefined, cols: 120, rows: 32 });
-  S.terms.set(t.address, t); S.fresh.set(t.address, Date.now());
+  S.terms.set(t.address, t); S.fresh.set(t.address, Date.now()); ui('open');
   return t.address;
 }
 async function endTerminal(addr) {
-  try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); } catch (e) { toast(e.message, true); }
+  try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); ui('close'); } catch (e) { toast(e.message, true); }
 }
 const agentLive = addr => { const t = S.terms.get(addr); return !!t && isAgent(t) && stateOf(t) !== 'ended'; };
 
@@ -842,11 +873,12 @@ document.addEventListener('visibilitychange', () => { if (markViewed()) render()
 // Put text on the clipboard: the clipboard API where the browser allows it, else a temporary text box (plain http, or a write
 // the browser refuses because it did not come from a click or key press).
 async function writeClip(text) {
-  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  try { await navigator.clipboard.writeText(text); ui('copy'); return true; } catch {}
   const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
   ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
   let ok = false; try { ok = document.execCommand('copy'); } catch {}
   ta.remove(); const p = P.get(S.focus); if (p) p.term.focus();
+  if (ok) ui('copy');
   return ok;
 }
 async function copySel() {
@@ -1170,7 +1202,7 @@ class Pane {
         if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
         const { path } = await r.json();
         this.term.paste(path + ' ');   // bracketed paste, so the agent sees an attached file
-        toast(`SENT ${f.name || 'IMAGE'}`);
+        toast(`SENT ${f.name || 'IMAGE'}`); ui('sent');
       } catch (e) { toast(`Upload failed: ${e.message}`, true); }
     }
     this.term.focus();
@@ -1425,13 +1457,13 @@ function renderFoot() {
 }
 
 // ── event feed ────────────────────────────────────────────────────────
-let evRetry = 0, refreshT;
+let evRetry = 0, refreshT, linkHealthy = false, linkDown = false;
 function connectEvents() {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/events`);
   ws.onopen = () => { evRetry = 0; setConn(true); refreshTerms().catch(() => {}); };
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'snapshot') $('#coredown').hidden = true;
+    if (m.type === 'snapshot') { $('#coredown').hidden = true; if (linkDown) ui('linkup'); linkDown = false; linkHealthy = true; }
     if (m.type === 'snapshot') $('#conn').title = `Live connection to the server (event ${m.seq})`;
     else if (m.type === 'notification' && m.method === 'event') {
       const e = m.params || {};
@@ -1440,7 +1472,7 @@ function connectEvents() {
     }
     else if (m.type === 'error') { if (m.code === 'core_down') $('#coredown').hidden = false; else toast(m.error, true); }
   };
-  ws.onclose = () => { setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
+  ws.onclose = () => { if (linkHealthy && !linkDown) { linkDown = true; ui('linkdown'); } setConn(false); setTimeout(connectEvents, Math.min(8000, 700 * ++evRetry)); };
 }
 function setConn(ok) { S.linkOk = ok; const c = $('#conn'); c.textContent = ok ? 'LINK OK' : 'LINK LOST'; c.className = 'chip sky' + (ok ? '' : ' bad'); document.documentElement.style.setProperty('--local-dot', ok ? '#44cc44' : '#ff5544'); if (S.spaces.length) renderSpaces(); }
 
@@ -1603,7 +1635,7 @@ function init() {
   $('#sec-notify-on').onclick = notifyToggle;
   $('#sec-notify-test').onclick = () => notify({ address: 'test' }, 'Test notification', 'This is what an agent alert looks like.', true);
   for (const id of ['#btn-settings', '#side-settings']) $(id).addEventListener('click', notifyUi);   // refresh the state each time Settings opens
-  notifyUi();
+  notifyUi(); uiSoundsInit();
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { const d = ev.data || {}; if (d.type === 'focus-agent' && d.addr && d.addr !== 'test') focusAddr(d.addr); });
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));
