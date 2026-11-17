@@ -74,8 +74,8 @@ always. Support for more agents can be added in `app/agents.py` (the `caps` entr
 - **Rename**: double-click the title, or Ctrl+Alt+R. Tabs rename with F2 and spaces with Shift+F2.
 - **Status**: WORKING, NEEDS YOU, STUCK?, DONE, IDLE or LIVE. A working agent whose output has not changed for a while is
   marked STUCK?; the STUCK button in the bottom strip cycles how long that takes (or turns it off). The colour and bars also show
-  in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off: a **red alert** when an agent needs you, a softer
-  **yellow alert** when one may be stuck, and a short chime when one is done.
+  in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off: a console warning tone when an agent needs you, an
+  alarm tone when one may be stuck, and a short chime when one is done.
 
 The small code at the right of a pane header is the terminal's real address (for example `t7`, or `name/t7` on another machine),
 useful with the `hc` command.

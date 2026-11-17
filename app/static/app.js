@@ -346,8 +346,8 @@ function stuckTick() {   // being stuck is a matter of time passing, not of an e
   if (changed) render();
 }
 function statusChanged(t, was, now) {
-  if (now === 'blocked') { play('tng_red_alert3'); toast(`${labelOf(t)} NEEDS YOU`, true); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
-  else if (now === 'stuck') { play('yellow_alert'); toast(`${labelOf(t)} MAY BE STUCK`, true); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
+  if (now === 'blocked') { play('console_warning'); toast(`${labelOf(t)} NEEDS YOU`, true); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
+  else if (now === 'stuck') { play('stuck_alarm'); toast(`${labelOf(t)} MAY BE STUCK`, true); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
   else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); notify(t, `${labelOf(t)} is done`, 'It has finished.'); }
 }
 // Browser notifications, for when this page is not the one you are looking at. Chosen per device in Settings > Notifications.
@@ -383,8 +383,8 @@ const sounds = {};
 function play(name) {
   if (!S.sound) return;
   try {
-    const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.${name === 'yellow_alert' ? 'wav' : 'mp3'}`));
-    a.currentTime = 0; a.volume = name.includes('alert') ? 0.5 : 0.7; a.play().catch(() => {});
+    const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.mp3`));
+    a.currentTime = 0; a.volume = name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : 0.7; a.play().catch(() => {});
   } catch {}
 }
 async function createTerminal(kind, opt = {}) {

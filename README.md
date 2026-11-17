@@ -18,8 +18,8 @@ following its own instructions, then come back here.
 
 - **Spaces, tabs and split panes**, the same model as the Herdr desktop app: split right or down, drag the dividers, drag a
   pane by its header to move or swap it, zoom, rename, close. Closing a pane gives its space to its neighbour.
-- **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars, a red alert sound when
-  an agent needs you, a yellow alert when one may be stuck, and optional browser notifications, so you can see which agent
+- **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars, a warning tone when
+  an agent needs you, an alarm tone when one may be stuck, and optional browser notifications, so you can see which agent
   is waiting for you without opening it.
 - **Any coding agent**: pick a default agent (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
   Antigravity or Gemini CLI) and start any installed one beside the focused pane, with install and sign-in steps for the ones
