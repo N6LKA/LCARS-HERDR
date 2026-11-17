@@ -390,16 +390,20 @@ function play(name) {
   } catch {}
 }
 // ── interface sounds: quiet beeps for what you do (the alerts above are separate). This device only; Settings > Interface sounds.
+// some events have several sounds that take turns, so the same one does not repeat every time (never the same one twice running)
+const UI_VARIANTS = { working: ['input_ok_1_clean', 'input_ok_2_clean', 'input_ok_4', 'keyok6'] };
 const UI_SOUNDS = { working: ['input_ok_1_clean'], open: ['keyok3'], sent: ['padd_3'], copy: ['keyok2'], micon: ['keyok4', 1.3], micoff: ['keyok4', 0.75],
   linkdown: ['padd_3', 0.7], linkup: ['padd_3', 1.3], close: ['keyok5', 0.7] };
 const UI_LABEL = { working: 'PROMPT TAKEN', open: 'NEW SESSION', sent: 'FILE SENT', copy: 'COPIED', micon: 'MIC ON', micoff: 'MIC OFF', linkdown: 'LINK LOST', linkup: 'LINK BACK', close: 'CLOSED' };
 const uiOn = () => { try { return localStorage.getItem('lcars-ui-sounds') !== '0'; } catch { return true; } };
 const uiVol = () => { try { const v = parseFloat(localStorage.getItem('lcars-ui-volume')); return v > 0 && v <= 1 ? v : 0.4; } catch { return 0.4; } };
-const uiLast = {};
+const uiLast = {}, uiVariant = {};
 function ui(name, force) {
   if (!force && (!S.sound || !uiOn())) return;
-  const d = UI_SOUNDS[name], now = Date.now(); if (!d || (!force && now - (uiLast[name] || 0) < 250)) return;   // closing five terminals is one sound, not five
+  let d = UI_SOUNDS[name]; const now = Date.now(); if (!d || (!force && now - (uiLast[name] || 0) < 250)) return;   // closing five terminals is one sound, not five
   uiLast[name] = now;
+  const vs = UI_VARIANTS[name];
+  if (vs) { let i; do { i = Math.floor(Math.random() * vs.length); } while (vs.length > 1 && i === uiVariant[name]); uiVariant[name] = i; d = [vs[i], d[1]]; }
   try {
     const a = new Audio(`/static/audio/${d[0]}.mp3`); a.volume = uiVol();
     if (d[1]) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = d[1]; }   // a rising or falling version of the same beep

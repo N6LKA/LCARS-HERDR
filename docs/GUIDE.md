@@ -73,7 +73,8 @@ always. Support for more agents can be added in `app/agents.py` (the `caps` entr
   the neighbouring pane takes its space.
 - **Rename**: double-click the title, or Ctrl+Alt+R. Tabs rename with F2 and spaces with Shift+F2.
 - **Status**: WORKING, NEEDS YOU, STUCK?, DONE, IDLE or LIVE. A working agent whose output has not changed for a while is
-  marked STUCK?; the STUCK button in the bottom strip cycles how long that takes (or turns it off). The colour and bars also show
+  marked STUCK?; the STUCK button in the bottom strip cycles how long that takes (or turns it off). A pane whose agent may be stuck gets a slowly glowing yellow frame, and one that needs you gets a
+  quicker glowing red frame, so you can spot it across a room of panes. The colour and bars also show
   in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off: a console warning tone when an agent needs you, an
   alarm tone when one may be stuck, and a short chime when one is done.
 
@@ -133,7 +134,7 @@ Open **SETTINGS** in the top bar.
 - **Appearance**: TNG era, Picard era or Titan DS. Saved to your account.
 - **Clock**: 12 or 24 hour. Saved to your account.
 - **Interface sounds**: quiet beeps for what you do, separate from the alerts. A beep when a new session opens, when the focused
-  agent takes your prompt and starts working, when a file is sent, when text is copied, when dictation turns on (rising) or off
+  agent takes your prompt and starts working (one of four beeps, taking turns), when a file is sent, when text is copied, when dictation turns on (rising) or off
   (falling), when a pane or agent ends, and a low or high beep when the link drops or returns. Switch them on or off, pick
   QUIET, MEDIUM or LOUD, and try each one. Saved on this device. The SOUND button in the bottom strip silences everything.
 - **Notifications**: turn on browser notifications for this device. When an agent needs you, may be stuck or is done, and you

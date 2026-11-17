@@ -175,6 +175,16 @@ body.no-panes #empty{display:grid}
 .pane.blocked{border-color:var(--red);animation:alert-border 1.4s ease-in-out infinite}
 /* only the frame breathes; the terminal text stays steady so it can be read while an agent waits for you */
 @keyframes alert-border{50%{border-color:#6e2a24}}
+/* a glowing frame on the pane itself: yellow and slow when the agent may be stuck, red and quicker when it needs you.
+   It is an inset overlay that ignores the mouse, so it works with every look and never covers the text for long. */
+.pane[data-state=stuck]{--gl:var(--gold,#ffcc66)}
+.pane.blocked{--gl:var(--red,#ff5544)}
+.pane[data-state=stuck]::before,.pane.blocked::before{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;border-radius:inherit;box-shadow:inset 0 0 0 3px var(--gl),inset 0 0 26px 4px var(--gl)}
+.pane[data-state=stuck]::before{animation:gl-slow 2.6s ease-in-out infinite}
+.pane.blocked::before{animation:gl-fast 1s ease-in-out infinite}
+@keyframes gl-slow{0%,100%{opacity:.3}50%{opacity:.95}}
+@keyframes gl-fast{0%,100%{opacity:.2}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.pane[data-state=stuck]::before,.pane.blocked::before{animation:none;opacity:.85}}
 .pane-h{display:flex;align-items:center;gap:4px;height:29px;flex:none;padding:0;background:#000}
 .pane-h .cap{width:14px;height:100%;background:var(--c,var(--s-live));flex:none}
 .pane-h .title{flex:1;min-width:0;height:100%;display:flex;align-items:center;padding:0 10px;background:var(--hdr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--hdrtext)}

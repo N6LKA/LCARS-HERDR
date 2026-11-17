@@ -184,3 +184,5 @@ html[data-theme=titan] .pill.small{border-radius:8px}
 /* small catalogue codes, like STN.11 and JM-138 on the wallpaper's steel panels: the terminal's address in each pane header */
 html[data-theme=titan] .pane-h .title::after{content:attr(data-code);margin-left:auto;padding-left:10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt2);opacity:.75}
 html[data-theme=titan] .pane.focus .pane-h .title::after{color:var(--peach);opacity:.8}
+
+html[data-theme=titan] .pane.blocked{--gl:var(--coral)}
