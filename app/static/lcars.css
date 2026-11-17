@@ -338,6 +338,16 @@ body.wco #top button,body.wco #tabs,body.wco #elbow button,body.wco #topbar-fill
 .dl{display:flex;font-family:var(--mono);font-size:12px;line-height:20px;white-space:pre;text-transform:none;letter-spacing:0;min-width:max-content}
 .dl .n{width:38px;text-align:right;color:#6d6d80;flex:none;padding-right:10px;user-select:none}
 .dl .t{color:#e8d8c8}
+.dl .t .hljs-comment,.dl .t .hljs-quote{color:#7d7890;font-style:italic}
+.dl .t .hljs-keyword,.dl .t .hljs-selector-tag,.dl .t .hljs-doctag,.dl .t .hljs-meta .hljs-keyword{color:var(--orange)}
+.dl .t .hljs-string,.dl .t .hljs-regexp,.dl .t .hljs-addition{color:var(--sky)}
+.dl .t .hljs-number,.dl .t .hljs-literal,.dl .t .hljs-symbol,.dl .t .hljs-bullet{color:var(--gold)}
+.dl .t .hljs-title,.dl .t .hljs-title.function_,.dl .t .hljs-section,.dl .t .hljs-selector-id,.dl .t .hljs-selector-class{color:var(--violet)}
+.dl .t .hljs-built_in,.dl .t .hljs-type,.dl .t .hljs-class .hljs-title,.dl .t .hljs-title.class_,.dl .t .hljs-attr,.dl .t .hljs-attribute,.dl .t .hljs-name,.dl .t .hljs-tag{color:var(--lilac)}
+.dl .t .hljs-variable,.dl .t .hljs-template-variable,.dl .t .hljs-params,.dl .t .hljs-property{color:var(--tan)}
+.dl .t .hljs-meta,.dl .t .hljs-link{color:#b8a8c8}
+.dl .t .hljs-deletion{color:#ff7766}
+.dl .t .hljs-emphasis{font-style:italic}.dl .t .hljs-strong{font-weight:700}
 .dl.add{background:#7fd17f22}.dl.del{background:#ff554422}
 .dl.hunk{background:#1f1530}.dl.hunk .t{color:#9a8aa8}
 .chead{display:flex;align-items:center;gap:10px;padding:6px 10px;flex:none;background:#0d0912;font-size:14px;letter-spacing:.08em}

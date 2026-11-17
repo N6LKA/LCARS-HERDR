@@ -143,6 +143,33 @@ async function openFile(path) {
   catch (e) { toast(e.message, true); return; }
   renderFiles();
 }
+
+// ── syntax highlighting (highlight.js, vendored; only for languages it knows, and not for huge files) ──
+const HL_EXT = { py: 'python', pyw: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+  json: 'json', jsonc: 'json', md: 'markdown', markdown: 'markdown', yml: 'yaml', yaml: 'yaml', sh: 'bash', bash: 'bash', zsh: 'bash', ksh: 'bash',
+  html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', xhtml: 'xml', plist: 'xml', css: 'css', scss: 'scss', less: 'less', sql: 'sql',
+  c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', hh: 'cpp', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin', swift: 'swift',
+  rb: 'ruby', php: 'php', lua: 'lua', pl: 'perl', pm: 'perl', r: 'r', cs: 'csharp', ini: 'ini', conf: 'ini', cfg: 'ini', toml: 'ini', env: 'ini',
+  service: 'ini', timer: 'ini', socket: 'ini', desktop: 'ini', diff: 'diff', patch: 'diff', ps1: 'powershell', mk: 'makefile', graphql: 'graphql' };
+const HL_NAME = { dockerfile: 'dockerfile', makefile: 'makefile', '.bashrc': 'bash', '.profile': 'bash', '.bash_profile': 'bash', '.zshrc': 'bash',
+  '.env': 'ini', 'nginx.conf': 'nginx' };
+const HL_SHEBANG = [[/python/, 'python'], [/node|deno|bun/, 'javascript'], [/\b(ba|z|k|da)?sh\b/, 'bash'], [/ruby/, 'ruby'], [/perl/, 'perl'], [/php/, 'php'], [/lua/, 'lua']];
+function hlLanguage(path, text) {
+  if (typeof hljs === 'undefined') return null;
+  const base = path.split('/').pop().toLowerCase();
+  let lang = HL_NAME[base] || HL_EXT[base.includes('.') ? base.split('.').pop() : ''] || null;
+  if (!lang && text.startsWith('#!')) { const first = text.slice(0, text.indexOf('\n') > 0 ? text.indexOf('\n') : 120); for (const [re, l] of HL_SHEBANG) if (re.test(first)) { lang = l; break; } }
+  return lang && hljs.getLanguage(lang) ? lang : null;
+}
+// highlight.js returns one run of HTML; cut it at the line ends, closing and reopening spans so every line stands alone
+function hlLines(html) {
+  const out = [], open = []; let cur = '';
+  for (const tok of html.split(/(<span[^>]*>|<\/span>|\n)/)) {
+    if (tok === '\n') { out.push(cur + '</span>'.repeat(open.length)); cur = open.join(''); }
+    else { if (tok.startsWith('<span')) open.push(tok); else if (tok === '</span>') open.pop(); cur += tok; }
+  }
+  out.push(cur); return out;
+}
 function renderViewer(body, sub) {
   const v = PANEL.view; sub.textContent = relPath(v.path); sub.title = v.path;
   const bar = document.createElement('div'); bar.className = 'vbar';
@@ -154,11 +181,15 @@ function renderViewer(body, sub) {
   if (v.binary) return renderNote(body, 'Binary file · no text preview');
   const code = document.createElement('div'); code.className = 'code';
   const lines = v.text.split('\n'); if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  let marked = null;   // the same lines as HTML with syntax colours, when the language is known and the file is a sensible size
+  const lang = v.text.length <= 300000 ? hlLanguage(v.path, v.text) : null;
+  if (lang) { try { marked = hlLines(hljs.highlight(v.text.replace(/\t/g, '    '), { language: lang, ignoreIllegals: true }).value); } catch { marked = null; } }
   const frag = document.createDocumentFragment();
   lines.forEach((t, i) => {
     const l = document.createElement('div'); l.className = 'dl';
     const n = document.createElement('span'); n.className = 'n'; n.textContent = i + 1;
-    const x = document.createElement('span'); x.className = 't'; x.textContent = t.replace(/\t/g, '    ');
+    const x = document.createElement('span'); x.className = 't';
+    if (marked && marked.length >= lines.length) x.innerHTML = marked[i]; else x.textContent = t.replace(/\t/g, '    ');
     l.append(n, x); frag.appendChild(l);
   });
   code.appendChild(frag); body.appendChild(code);

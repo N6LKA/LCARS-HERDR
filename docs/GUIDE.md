@@ -74,14 +74,17 @@ always. Support for more agents can be added in `app/agents.py` (the `caps` entr
 - **Rename**: double-click the title, or Ctrl+Alt+R. Tabs rename with F2 and spaces with Shift+F2.
 - **Status**: WORKING, NEEDS YOU, STUCK?, DONE, IDLE or LIVE. A working agent whose output has not changed for a while is
   marked STUCK?; the STUCK button in the bottom strip cycles how long that takes (or turns it off). The colour and bars also show
-  in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off.
+  in the sidebar, so you can see which agent is waiting for you. SOUND, also in the bottom strip, turns the alert sounds on and off: a **red alert** when an agent needs you, a softer
+  **yellow alert** when one may be stuck, and a short chime when one is done.
 
 The small code at the right of a pane header is the terminal's real address (for example `t7`, or `name/t7` on another machine),
 useful with the `hc` command.
 
 ## Files and Changes
 
-**FILES** (Ctrl+Alt+F) opens a read-only browser for the focused pane's folder: open folders, view text files. **CHANGES**
+**FILES** (Ctrl+Alt+F) opens a read-only browser for the focused pane's folder: open folders, view text files. Common
+languages and config files are shown with syntax colours (Python, JavaScript, shell, JSON, YAML, HTML, CSS, SQL, Dockerfiles
+and many more, recognised by the file name or the first `#!` line); other files stay plain. **CHANGES**
 (Ctrl+Alt+G) shows `git` status and diffs for that folder and lets you commit. Both run as the same user as the terminals, so
 they add no access that a terminal does not already have. They refuse `/proc`, `/sys` and `/dev`.
 
@@ -129,7 +132,9 @@ Open **SETTINGS** in the top bar.
 
 - **Appearance**: TNG era, Picard era or Titan DS. Saved to your account.
 - **Clock**: 12 or 24 hour. Saved to your account.
-- **Default agent**: which agent the NEW button, the tab menu and the split commands start. Saved to your account.
+- **Notifications**: turn on browser notifications for this device. When an agent needs you, may be stuck or is done, and you
+  are looking at another window or tab, you get a notification, and tapping it brings LCARS forward on that agent. It needs
+  HTTPS or localhost, and works on a phone once LCARS is installed as an app. which agent the NEW button, the tab menu and the split commands start. Saved to your account.
 - **Account**: change your password or username, turn on **2FA** with an authenticator app (you get one-time recovery codes),
   see where you are signed in, and sign out other sessions.
 - **Users** (admins only): add and remove users. Every user can use the machine's terminals, so add only people you trust.

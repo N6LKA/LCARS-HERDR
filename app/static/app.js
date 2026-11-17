@@ -346,15 +346,44 @@ function stuckTick() {   // being stuck is a matter of time passing, not of an e
   if (changed) render();
 }
 function statusChanged(t, was, now) {
-  if (now === 'blocked') { play('tng_red_alert3'); toast(`${labelOf(t)} NEEDS YOU`, true); }
-  else if (now === 'stuck') { play('padd_3'); toast(`${labelOf(t)} MAY BE STUCK`, true); }
-  else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); }
+  if (now === 'blocked') { play('tng_red_alert3'); toast(`${labelOf(t)} NEEDS YOU`, true); notify(t, `${labelOf(t)} needs you`, 'It is waiting for your answer.'); }
+  else if (now === 'stuck') { play('yellow_alert'); toast(`${labelOf(t)} MAY BE STUCK`, true); notify(t, `${labelOf(t)} may be stuck`, 'It says it is working but nothing has changed for a while.'); }
+  else if (now === 'done' && (was === 'working' || was === 'stuck')) { play('padd_1'); toast(`${labelOf(t)} DONE`); notify(t, `${labelOf(t)} is done`, 'It has finished.'); }
+}
+// Browser notifications, for when this page is not the one you are looking at. Chosen per device in Settings > Notifications.
+const NOTIFY_KEY = 'lcars-notify';
+const notifySupported = () => 'Notification' in window;
+const notifyWanted = () => { try { return localStorage.getItem(NOTIFY_KEY) === '1'; } catch { return false; } };
+const notifyOn = () => notifySupported() && notifyWanted() && Notification.permission === 'granted';
+function notify(t, title, body, force) {
+  if (!notifyOn() || (!force && !document.hidden && document.hasFocus())) return;   // you are already looking at LCARS
+  const opt = { body, tag: t.address, renotify: true, icon: '/static/icons/icon-192.png', data: { addr: t.address } };
+  const viaPage = () => { try { new Notification(title, opt).onclick = () => { window.focus(); if (t.address && t.address !== 'test') focusAddr(t.address); }; } catch {} };
+  if (navigator.serviceWorker) navigator.serviceWorker.ready.then(r => r.showNotification(title, opt)).catch(viaPage); else viaPage();
+}
+function notifyUi() {
+  const m = $('#sec-notify-msg'), on = $('#sec-notify-on'), test = $('#sec-notify-test'); if (!m) return;
+  const perm = notifySupported() ? Notification.permission : 'unsupported';
+  test.hidden = !notifyOn();
+  if (perm === 'unsupported') { m.textContent = 'This browser cannot show notifications.'; on.hidden = true; return; }
+  on.hidden = false;
+  if (perm === 'denied') { m.textContent = 'The browser is blocking notifications for this site. Allow them in the site settings, then come back.'; on.textContent = 'BLOCKED'; on.disabled = true; return; }
+  on.disabled = false;
+  on.textContent = notifyOn() ? '\u2713 ON · TURN OFF' : 'TURN ON';
+  m.textContent = notifyOn() ? 'On for this device. You get a notification when an agent needs you, may be stuck or is done, but only while you are looking at another window or tab.'
+    : 'Get a notification on this device when an agent needs you, may be stuck or is done, while you are in another window or tab. It needs HTTPS or localhost.';
+}
+async function notifyToggle() {
+  if (notifyOn()) { try { localStorage.setItem(NOTIFY_KEY, '0'); } catch {} return notifyUi(); }
+  try { if (Notification.permission !== 'granted') await Notification.requestPermission(); } catch {}
+  if (Notification.permission === 'granted') { try { localStorage.setItem(NOTIFY_KEY, '1'); } catch {} notify({ address: 'test' }, 'LCARS notifications are on', 'You will see one like this when an agent needs you.', true); }
+  notifyUi();
 }
 const sounds = {};
 function play(name) {
   if (!S.sound) return;
   try {
-    const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.mp3`));
+    const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.${name === 'yellow_alert' ? 'wav' : 'mp3'}`));
     a.currentTime = 0; a.volume = name.includes('alert') ? 0.5 : 0.7; a.play().catch(() => {});
   } catch {}
 }
@@ -1571,6 +1600,11 @@ function init() {
     if (dlg.returnValue === 'ok') openBeside(dlg.dataset.kind, { name: $('#new-name').value.trim(), cwd: $('#new-cwd').value.trim(), explicit: true });
   });
   $('#pal-close').onclick = () => $('#pal-dlg').close();
+  $('#sec-notify-on').onclick = notifyToggle;
+  $('#sec-notify-test').onclick = () => notify({ address: 'test' }, 'Test notification', 'This is what an agent alert looks like.', true);
+  for (const id of ['#btn-settings', '#side-settings']) $(id).addEventListener('click', notifyUi);   // refresh the state each time Settings opens
+  notifyUi();
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { const d = ev.data || {}; if (d.type === 'focus-agent' && d.addr && d.addr !== 'test') focusAddr(d.addr); });
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));
   pi.addEventListener('keydown', e => {

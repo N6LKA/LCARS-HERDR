@@ -878,6 +878,16 @@ self.addEventListener('activate', e => e.waitUntil((async () => {
   for (const k of await caches.keys()) await caches.delete(k);
   await self.clients.claim();
 })()));
+// Tapping a notification brings LCARS forward and asks the page to show that agent.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const addr = e.notification.data && e.notification.data.addr;
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (all.length) { await all[0].focus(); all[0].postMessage({ type: 'focus-agent', addr }); }
+    else await self.clients.openWindow('/');
+  })());
+});
 self.addEventListener('fetch', () => {});   // present so browsers treat the page as an installable app
 """
 

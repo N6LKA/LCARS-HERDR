@@ -18,15 +18,17 @@ following its own instructions, then come back here.
 
 - **Spaces, tabs and split panes**, the same model as the Herdr desktop app: split right or down, drag the dividers, drag a
   pane by its header to move or swap it, zoom, rename, close. Closing a pane gives its space to its neighbour.
-- **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars and optional alert sounds,
-  so you can see which agent is waiting for you without opening it.
+- **Live agent status** for every terminal (working, needs you, stuck, done, idle) with moving bars, a red alert sound when
+  an agent needs you, a yellow alert when one may be stuck, and optional browser notifications, so you can see which agent
+  is waiting for you without opening it.
 - **Any coding agent**: pick a default agent (Claude Code, Codex, GitHub Copilot, Grok, OpenCode, Cursor Agent, Amp, Pi,
   Antigravity or Gemini CLI) and start any installed one beside the focused pane, with install and sign-in steps for the ones
   that are not installed yet. Everything works with every agent; a few extras, such as the resume list, are optional add-ons
   for agents that support them.
 - **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use FILE in its header. The file is saved beside
   the terminal and its path is typed in for the agent.
-- **Files and Changes panels**: browse files and view them, see `git` changes and diffs for the pane's folder, and commit.
+- **Files and Changes panels**: browse files and view them with syntax colours, see `git` changes and diffs for the pane's
+  folder, and commit.
 - **Other machines**: add another computer over SSH and use its terminals in the same window.
 - **Voice dictation** into the focused pane, recognised in the browser on your own device.
 - **Copy and paste that works in a browser**, including text an agent selects for you.
@@ -197,6 +199,7 @@ under the same licence. See [LICENSE](LICENSE) for details.
   Star Trek: Picard season 3 console screens and the Titan.DS display system by meWho•Rob.
 - Model and shortcuts follow [Herdr](https://github.com/herdrdev/herdr-app) and
   [herdr-core](https://github.com/herdrdev/herdr-core) (Apache-2.0).
-- [xterm.js](https://xtermjs.org) (MIT) is vendored in `app/static/vendor`. The Antonio font (SIL OFL 1.1) and Hack font
+- [xterm.js](https://xtermjs.org) (MIT) and [highlight.js](https://highlightjs.org) (BSD-3-Clause, licence in
+  `app/static/vendor/highlight.LICENSE.txt`) are vendored in `app/static/vendor`. The Antonio font (SIL OFL 1.1) and Hack font
   (see `app/static/fonts`) are included with their licences.
 - Star Trek and LCARS belong to their owners. This is an unofficial, fan-styled interface with no affiliation.
