@@ -30,6 +30,8 @@ function markViewed() {
   return true;
 }
 const S = {
+  preview: null,   // addr -> state, while "Preview the pane alert glows" is showing
+
   terms: new Map(),      // address -> terminal facts from the core
   spaces: [],            // [{id, name|null, tab, tabs:[{id, name|null, root}]}]
   active: null,          // active space id
@@ -345,6 +347,22 @@ function stuckTick() {   // being stuck is a matter of time passing, not of an e
   let changed = false;
   for (const t of S.terms.values()) { const now = stateOf(t), was = S.prev.get(t.address); if (was !== now) { statusChanged(t, was, now); S.prev.set(t.address, now); changed = true; } }
   if (changed) render();
+}
+// Shows the two alert looks on the panes of this tab for a few seconds, so you can see them without waiting for a real agent.
+let previewT = null;
+function previewGlows() {
+  const tab = curTab(), addrs = tab ? leaves(tab.root) : [];
+  const show = m => { S.preview = m; for (const a of addrs) { const p = P.get(a); if (p) p.update(); } };
+  const stop = () => { clearTimeout(previewT); previewT = null; show(null); };
+  if (previewT) { stop(); return toast('PREVIEW OFF'); }
+  if (!addrs.length) return toast('Open a pane first', true);
+  if (addrs.length >= 2) {
+    show(new Map([[addrs[0], 'stuck'], [addrs[1], 'blocked']]));
+    toast('PREVIEW · FIRST PANE MAY BE STUCK (YELLOW) · SECOND NEEDS YOU (RED)'); previewT = setTimeout(stop, 15000);
+  } else {   // one pane: show the two looks one after the other
+    show(new Map([[addrs[0], 'stuck']])); toast('PREVIEW · MAY BE STUCK (YELLOW)');
+    previewT = setTimeout(() => { show(new Map([[addrs[0], 'blocked']])); toast('PREVIEW · NEEDS YOU (RED)'); previewT = setTimeout(stop, 8000); }, 8000);
+  }
 }
 function statusChanged(t, was, now) {
   if (now === 'working' && t.address === S.focus && isAgent(t) && (was === 'idle' || was === 'blocked' || was === 'done' || was === 'live')) ui('working');   // the agent took what you sent
@@ -700,6 +718,7 @@ const run = (id, arg) => { const c = CMDS.get(id); if (c) return c.run(arg); };
 def('app.palette', 'Command palette', () => openPalette(), 'App');
 def('app.picker', 'Find a space, tab or agent…', () => openPicker(), 'App');
 def('app.help', 'Keyboard shortcuts', () => openPalette(), 'App');
+def('app.preview_glows', 'Preview the pane alert glows (stuck and needs you)', () => previewGlows(), 'App');
 def('agent.menu', 'Start another coding agent…', () => agentsMenu(Math.max(20, innerWidth / 2 - 110), 110), 'Agents');
 def('app.install', 'Install LCARS as an app', () => installApp(), 'App');
 def('layout.toggle_sidebar', 'Show or hide the sidebar', () => { document.body.classList.toggle('side-hidden'); requestAnimationFrame(() => P.forEach(p => p.refit())); }, 'App');
@@ -1218,7 +1237,7 @@ class Pane {
     this.sendFiles(files);
   }
   update() {
-    const t = S.terms.get(this.addr), st = t ? stateOf(t) : 'ended';
+    const t = S.terms.get(this.addr), st = (S.preview && S.preview.get(this.addr)) || (t ? stateOf(t) : 'ended');
     this.el.style.setProperty('--c', STATUS_COLOR[st]);
     this.el.classList.toggle('blocked', st === 'blocked');
     this.el.dataset.state = st;
