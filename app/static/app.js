@@ -410,7 +410,10 @@ const RA_STEPS = [5, 10, 20];
 const redAlertOn = () => { try { return localStorage.getItem('lcars-redalert') !== '0'; } catch { return true; } };
 const redAlertMin = () => { try { const v = parseInt(localStorage.getItem('lcars-redalert-min'), 10); return RA_STEPS.includes(v) ? v : 10; } catch { return 10; } };
 const raSeen = new Set();
-function redAlert(force) { if (force || redAlertOn()) play('tng_red_alert3', force); }
+function redAlert(force) {   // the whole Red Alert tone, twice
+  if (!(force || redAlertOn()) || (!S.sound && !force)) return;
+  try { const a = new Audio('/static/audio/tng_red_alert3.mp3'); a.volume = 0.6; let n = 0; a.onended = () => { if (++n < 2) { a.currentTime = 0; a.play().catch(() => {}); } }; a.play().catch(() => {}); } catch {}
+}
 function redAlertUi() {
   const on = redAlertOn(), m = redAlertMin();
   document.querySelectorAll('#sec-ra-on button').forEach(b => { const sel = (b.dataset.ra === 'on') === on; b.setAttribute('aria-pressed', sel); b.textContent = (sel ? '\u2713 ' : '') + b.dataset.label; });
