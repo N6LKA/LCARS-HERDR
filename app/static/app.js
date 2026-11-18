@@ -412,6 +412,7 @@ const redAlertMin = () => { try { const v = parseInt(localStorage.getItem('lcars
 const raSeen = new Set();
 function redAlert(force) {   // the whole Red Alert tone, twice
   if (!(force || redAlertOn()) || (!S.sound && !force)) return;
+  if (blip('tng_red_alert3', 0.6, 1, 2)) return;
   try { const a = new Audio('/static/audio/tng_red_alert3.mp3'); a.volume = 0.6; let n = 0; a.onended = () => { if (++n < 2) { a.currentTime = 0; a.play().catch(() => {}); } }; a.play().catch(() => {}); } catch {}
 }
 function redAlertUi() {
@@ -425,9 +426,39 @@ function redAlertInit() {
   const t = $('#sec-ra-try'); if (t) t.onclick = () => redAlert(true);
   redAlertUi();
 }
+// Sounds are loaded once and kept decoded in memory, so they start at once. A sound that cannot start right now
+// (the browser has not let this page make noise yet) is dropped, never queued to play minutes later.
+const AUDIO_FILES = ['console_warning', 'stuck_alarm', 'tng_red_alert3', 'padd_1', 'padd_2', 'padd_3', 'keyok1', 'keyok2', 'keyok3', 'keyok4', 'keyok5', 'keyok6',
+  'input_ok_1_clean', 'input_ok_2_clean', 'input_ok_4', 'input_failed_clean', 'computerbeep_1', 'tng_chime_clean', 'tng_chirp_clean', 'computer_activate'];
+const AC = window.AudioContext || window.webkitAudioContext;
+let actx = null; const abuf = {}, aload = {};
+function audioCtx() { if (!actx && AC) { try { actx = new AC(); } catch {} } return actx; }
+function loadSound(name) {
+  if (abuf[name] || aload[name]) return;
+  const c = audioCtx(); if (!c) return;
+  aload[name] = fetch(`/static/audio/${name}.mp3`).then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => new Promise((ok, no) => c.decodeAudioData(b, ok, no)))
+    .then(d => { abuf[name] = d; }).catch(() => { delete aload[name]; });
+}
+function audioInit() {
+  const wake = () => { const c = audioCtx(); if (c && c.state === 'suspended') c.resume().catch(() => {}); };
+  for (const e of ['pointerdown', 'keydown', 'touchstart']) document.addEventListener(e, wake, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+  audioCtx(); AUDIO_FILES.forEach(loadSound);
+}
+// returns false when it could not play (then the caller may use the plain fallback)
+function blip(name, vol, rate = 1, times = 1) {
+  const c = audioCtx(); if (!c) return false;
+  const b = abuf[name]; if (!b) { loadSound(name); return true; }   // not loaded yet: skip this one, it will be ready next time
+  if (c.state !== 'running') { c.resume().catch(() => {}); return true; }   // not allowed to make noise yet: drop it
+  const g = c.createGain(); g.gain.value = vol; g.connect(c.destination);
+  let at = c.currentTime + 0.01;
+  for (let i = 0; i < times; i++) { const src = c.createBufferSource(); src.buffer = b; src.playbackRate.value = rate; src.connect(g); src.start(at); at += b.duration / rate; }
+  return true;
+}
 const sounds = {};
 function play(name, force) {
   if (!S.sound && !force) return;
+  if (blip(name, name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : name === 'tng_red_alert3' ? 0.6 : 0.7)) return;
   try {
     const a = sounds[name] || (sounds[name] = new Audio(`/static/audio/${name}.mp3`));
     a.currentTime = 0; a.volume = name === 'console_warning' || name === 'stuck_alarm' ? 0.5 : name === 'tng_red_alert3' ? 0.6 : 0.7; a.play().catch(() => {});
@@ -449,6 +480,7 @@ function ui(name, force) {
   uiLast[name] = now;
   const vs = UI_VARIANTS[name];
   if (vs) { let i; do { i = Math.floor(Math.random() * vs.length); } while (vs.length > 1 && i === uiVariant[name]); uiVariant[name] = i; d = [vs[i], d[1]]; }
+  if (blip(d[0], uiVol(), d[1] || 1)) return;
   try {
     const a = new Audio(`/static/audio/${d[0]}.mp3`); a.volume = uiVol();
     if (d[1]) { a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = d[1]; }   // a rising or falling version of the same beep
@@ -477,7 +509,7 @@ async function createTerminal(kind, opt = {}) {
   return t.address;
 }
 async function endTerminal(addr) {
-  try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); ui('close'); } catch (e) { toast(e.message, true); }
+  ui('close'); try { await api('/api/terminals?terminal=' + encodeURIComponent(addr), { method: 'DELETE' }); } catch (e) { toast(e.message, true); }
 }
 const agentLive = addr => { const t = S.terms.get(addr); return !!t && isAgent(t) && stateOf(t) !== 'ended'; };
 
@@ -1685,7 +1717,7 @@ function init() {
   $('#sec-notify-on').onclick = notifyToggle;
   $('#sec-notify-test').onclick = () => notify({ address: 'test' }, 'Test notification', 'This is what an agent alert looks like.', true);
   for (const id of ['#btn-settings', '#side-settings']) $(id).addEventListener('click', notifyUi);   // refresh the state each time Settings opens
-  notifyUi(); uiSoundsInit(); redAlertInit();
+  notifyUi(); uiSoundsInit(); redAlertInit(); audioInit();
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { const d = ev.data || {}; if (d.type === 'focus-agent' && d.addr && d.addr !== 'test') focusAddr(d.addr); });
   const pi = $('#pal-input');
   pi.addEventListener('input', () => fillPalette(pi.value));
