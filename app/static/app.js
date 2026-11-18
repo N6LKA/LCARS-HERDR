@@ -1263,7 +1263,10 @@ class Pane {
           this.ended = true; const r = m.reason || {};
           this.term.write('\r\n\x1b[38;5;208m[ terminal ended ]\x1b[0m\r\n');
           // A clean exit or an end-it-yourself closes the pane; a crash stays so its last output can be read.
-          if (!swapping.has(this.addr) && (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code))) setTimeout(() => dropFromTree(this.addr), 600);
+          if (!swapping.has(this.addr) && (r.reason === 'killed' || (r.reason === 'exited' && !r.exit_code))) {
+            if (locate(this.addr)) ui('close');   // it ended by itself (/exit, a killed program): the close button already played its own
+            setTimeout(() => dropFromTree(this.addr), 600);
+          }
         } else if (m.type === 'error') { this.term.write(`\r\n\x1b[31m[ ${m.error} ]\x1b[0m\r\n`); this.ended = true; }
         return;
       }
