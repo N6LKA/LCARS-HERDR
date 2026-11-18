@@ -93,7 +93,7 @@ they add no access that a terminal does not already have. They refuse `/proc`, `
 
 Both also work on a pane that lives on **another machine**: the panel shows that machine's folder (its name is in the panel heading), and the
 commit runs there too, so the confirm box names the machine. The other machine needs `git` and a Linux or macOS system, and its `hc`
-must be current (LCARS tells you if not).
+must be current (an error says so if not).
 
 ## Sending files and images
 
