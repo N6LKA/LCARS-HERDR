@@ -16,6 +16,7 @@ const PANEL = {
   git: null,              // last /api/git/status
   diffOpen: null, diffClosed: false, diff: null,
   busy: false,
+  machine: '',            // the machine the panel is showing ('' = this one)
 };
 const panelEl = id => document.getElementById(id);
 const joinPath = (dir, name) => (dir.endsWith('/') ? dir : dir + '/') + name;
@@ -46,7 +47,10 @@ function initSideResize() {
   window.addEventListener('resize', () => { const w = Number(localStorage.getItem(SIDE.key)); if (w) setSide(w, false); });
 }
 function savePanels() { localStorage.setItem('lcars-panels', JSON.stringify(PANEL.saved)); }
-function panelCwd() { return (typeof cwdOf === 'function' && S.focus && cwdOf(S.focus)) || (typeof S !== 'undefined' && S.home) || '/'; }
+const panelMachine = () => (typeof machineOf === 'function' && S.focus && machineOf(S.focus)) || '';   // '' for a pane on this machine
+const onq = (m, first) => (m ? (first ? '?' : '&') + 'on=' + encodeURIComponent(m) : '');
+// On another machine with no folder known, '' lets the server start at that machine's home.
+function panelCwd() { const m = panelMachine(), c = typeof cwdOf === 'function' && S.focus && cwdOf(S.focus); return c || (m ? '' : (typeof S !== 'undefined' && S.home) || '/'); }
 function relPath(p) { return PANEL.root && p.startsWith(PANEL.root + '/') ? p.slice(PANEL.root.length + 1) : p; }
 
 function applyPanelDom() {
@@ -73,12 +77,11 @@ function panelSync() {                // called after every draw: follow the spa
     const w = PANEL.saved[S.active] || null;
     if (w !== PANEL.which) { PANEL.which = w; PANEL.view = null; PANEL.diff = null; applyPanelDom(); }
   }
-  if (PANEL.which) { const c = panelCwd(); if (c !== lastCwd) { lastCwd = c; panelRefresh(); } }
+  if (PANEL.which) { const c = panelMachine() + '|' + panelCwd(); if (c !== lastCwd) { lastCwd = c; panelRefresh(); } }
 }
 
 async function panelRefresh() {
   if (!PANEL.which || PANEL.busy) return;
-  if (S.focus && S.focus.includes('/')) { panelEl('p-sub').textContent = ''; panelEl('p-back').hidden = true; panelEl('p-foot').hidden = true; return renderMessage('Not available on remote machines yet.'); }
   PANEL.busy = true;
   try { await (PANEL.which === 'files' ? filesRefresh() : changesRefresh()); }
   catch (e) { renderMessage(e.message || String(e)); }
@@ -88,18 +91,21 @@ function renderMessage(text) { const b = panelEl('p-body'); b.textContent = ''; 
 
 // ── Files ──────────────────────────────────────────────────────────────
 async function filesRefresh() {
-  const root = panelCwd();
-  if (root !== PANEL.root) {
-    if (PANEL.root) PANEL.openByRoot.set(PANEL.root, PANEL.openDirs);
-    PANEL.root = root; PANEL.openDirs = PANEL.openByRoot.get(root) || new Set(); PANEL.cache = new Map(); PANEL.view = null;
+  const m = panelMachine();
+  let root = panelCwd();
+  if (!root && m) root = (await api('/api/fs/list?path=' + onq(m))).path;   // that machine's home
+  const key = m + '|' + root, was = PANEL.machine + '|' + PANEL.root;
+  if (key !== was) {
+    if (PANEL.root) PANEL.openByRoot.set(was, PANEL.openDirs);
+    PANEL.machine = m; PANEL.root = root; PANEL.openDirs = PANEL.openByRoot.get(key) || new Set(); PANEL.cache = new Map(); PANEL.view = null;
   }
   const dirs = [root, ...PANEL.openDirs];
   await Promise.all(dirs.map(async d => {
-    try { const r = await api('/api/fs/list?path=' + encodeURIComponent(d)); PANEL.cache.set(d, r.entries); if (d === root) PANEL.truncated = r.truncated; }
+    try { const r = await api('/api/fs/list?path=' + encodeURIComponent(d) + onq(m)); PANEL.cache.set(d, r.entries); if (d === root) PANEL.truncated = r.truncated; }
     catch (e) { if (d === root) { PANEL.cache.delete(d); PANEL.rootError = e.message; } else PANEL.openDirs.delete(d); }
   }));
   try {
-    const g = await api('/api/git/status?cwd=' + encodeURIComponent(root));
+    const g = await api('/api/git/status?cwd=' + encodeURIComponent(root) + onq(m));
     PANEL.marks = new Map(); if (!g.error) for (const f of g.files) PANEL.marks.set(joinPath(g.root, f.path), f.status);
   } catch { PANEL.marks = new Map(); }
   renderFiles();
@@ -108,8 +114,8 @@ function renderFiles() {
   const body = panelEl('p-body'), sub = panelEl('p-sub'); body.textContent = '';
   panelEl('p-back').hidden = !PANEL.view;
   if (PANEL.view) return renderViewer(body, sub);
-  sub.textContent = PANEL.root.split('/').filter(Boolean).pop() || '/';
-  sub.title = PANEL.root;
+  sub.textContent = (PANEL.machine ? PANEL.machine.toUpperCase() + ' · ' : '') + (PANEL.root.split('/').filter(Boolean).pop() || '/');
+  sub.title = (PANEL.machine ? PANEL.machine + ':' : '') + PANEL.root;
   if (!PANEL.cache.has(PANEL.root)) return renderMessage(PANEL.rootError || 'No folder');
   const entries = PANEL.cache.get(PANEL.root);
   if (!entries.length) return renderMessage('No files');
@@ -135,11 +141,11 @@ function renderFiles() {
 async function toggleDir(path) {
   if (PANEL.openDirs.has(path)) { for (const d of [...PANEL.openDirs]) if (d === path || d.startsWith(path + '/')) { PANEL.openDirs.delete(d); PANEL.cache.delete(d); } renderFiles(); return; }
   PANEL.openDirs.add(path);
-  try { PANEL.cache.set(path, (await api('/api/fs/list?path=' + encodeURIComponent(path))).entries); } catch (e) { PANEL.openDirs.delete(path); toast(e.message, true); }
+  try { PANEL.cache.set(path, (await api('/api/fs/list?path=' + encodeURIComponent(path) + onq(PANEL.machine))).entries); } catch (e) { PANEL.openDirs.delete(path); toast(e.message, true); }
   renderFiles();
 }
 async function openFile(path) {
-  try { PANEL.view = await api('/api/fs/read?path=' + encodeURIComponent(path)); }
+  try { PANEL.view = await api('/api/fs/read?path=' + encodeURIComponent(path) + onq(PANEL.machine)); }
   catch (e) { toast(e.message, true); return; }
   renderFiles();
 }
@@ -199,13 +205,13 @@ function renderNote(body, text) { const n = document.createElement('div'); n.cla
 
 // ── Changes ────────────────────────────────────────────────────────────
 async function changesRefresh() {
-  const cwd = panelCwd();
-  const g = await api('/api/git/status?cwd=' + encodeURIComponent(cwd));
-  PANEL.git = g; PANEL.root = cwd;
+  const m = panelMachine(), cwd = panelCwd();
+  const g = await api('/api/git/status?cwd=' + encodeURIComponent(cwd) + onq(m));
+  PANEL.git = g; PANEL.machine = m; PANEL.root = cwd || g.root;
   if (g.error) { PANEL.diff = null; return renderChanges(); }
   if (PANEL.diffOpen && !g.files.some(f => f.path === PANEL.diffOpen)) { PANEL.diffOpen = null; PANEL.diff = null; }
   if (!PANEL.diffOpen && !PANEL.diffClosed && g.files.length) PANEL.diffOpen = g.files[0].path;   // the first file opens until you close one
-  if (PANEL.diffOpen) { try { PANEL.diff = await api(`/api/git/diff?cwd=${encodeURIComponent(g.root)}&path=${encodeURIComponent(PANEL.diffOpen)}`); } catch (e) { PANEL.diff = { error: e.message }; } }
+  if (PANEL.diffOpen) { try { PANEL.diff = await api(`/api/git/diff?cwd=${encodeURIComponent(g.root)}&path=${encodeURIComponent(PANEL.diffOpen)}${onq(PANEL.machine)}`); } catch (e) { PANEL.diff = { error: e.message }; } }
   renderChanges();
 }
 function renderChanges() {
@@ -214,7 +220,7 @@ function renderChanges() {
   if (!g) return renderMessage('Loading changes…');
   panelEl('p-foot').hidden = !!g.error;
   if (g.error) { sub.textContent = ''; return renderMessage(g.error); }
-  sub.textContent = '';
+  sub.textContent = PANEL.machine ? PANEL.machine.toUpperCase() : '';
   const head = document.createElement('div'); head.className = 'chead';
   const branch = `⎇ ${g.branch}${g.ahead ? ` ↑${g.ahead}` : ''}${g.behind ? ` ↓${g.behind}` : ''}`;
   head.innerHTML = '<span class="br"></span><span class="cnt"></span><span class="tot"><b class="a"></b> <b class="d"></b></span>';
@@ -246,7 +252,7 @@ function renderChanges() {
 }
 async function loadDiff() {
   if (!PANEL.git || !PANEL.diffOpen) return;
-  try { PANEL.diff = await api(`/api/git/diff?cwd=${encodeURIComponent(PANEL.git.root)}&path=${encodeURIComponent(PANEL.diffOpen)}`); } catch (e) { PANEL.diff = { error: e.message }; }
+  try { PANEL.diff = await api(`/api/git/diff?cwd=${encodeURIComponent(PANEL.git.root)}&path=${encodeURIComponent(PANEL.diffOpen)}${onq(PANEL.machine)}`); } catch (e) { PANEL.diff = { error: e.message }; }
   renderChanges();
 }
 function renderDiff(dv) {
@@ -276,9 +282,9 @@ function renderDiff(dv) {
 async function commitChanges() {
   const input = panelEl('c-msg'), note = panelEl('c-note'), msg = input.value.trim(), g = PANEL.git;
   if (!msg || !g || g.error || !g.files.length) return;
-  if (!confirm(`Commit ${g.files.length} file${g.files.length === 1 ? '' : 's'} to ${g.branch}?\n\nThis stages everything first (git add -A).`)) return;
+  if (!confirm(`Commit ${g.files.length} file${g.files.length === 1 ? '' : 's'} to ${g.branch}${PANEL.machine ? ' on ' + PANEL.machine.toUpperCase() : ''}?\n\nThis stages everything first (git add -A).`)) return;
   panelEl('c-btn').disabled = true; note.textContent = 'COMMITTING…'; note.className = '';
-  try { await post('/api/git/commit', { cwd: g.root, message: msg }); input.value = ''; note.textContent = ''; toast('COMMITTED'); }
+  try { await post('/api/git/commit', { cwd: g.root, message: msg, on: PANEL.machine || undefined }); input.value = ''; note.textContent = ''; toast('COMMITTED'); }
   catch (e) { note.textContent = 'Commit failed: ' + e.message; note.className = 'err'; }
   finally { panelEl('c-btn').disabled = false; PANEL.diffClosed = false; PANEL.diffOpen = null; panelRefresh(); }
 }
