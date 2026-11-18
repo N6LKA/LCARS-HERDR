@@ -8,6 +8,7 @@ Every endpoint takes an optional `on` (a machine name). Then the same work is do
 herdr-core (`machine.exec` and `file.read`), as the user the core logs in as there. LCARS itself never opens ssh.
 """
 import asyncio
+import base64
 import os
 import posixpath
 from pathlib import Path, PurePosixPath
@@ -64,7 +65,8 @@ async def _rexec(on: str, argv: list[str], cwd: str | None = None, timeout: floa
     if r.get("timed_out"):
         raise HTTPException(504, "the command took too long")
     code = r.get("code")
-    return (-1 if code is None else code), (r.get("stdout") or "").encode(), (r.get("stderr") or "").encode()
+    # the core sends what the program wrote as base64
+    return (-1 if code is None else code), base64.b64decode(r.get("stdout") or ""), base64.b64decode(r.get("stderr") or "")
 
 
 def _rsafe(path: str) -> str:

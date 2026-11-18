@@ -91,13 +91,17 @@ and many more, recognised by the file name or the first `#!` line); other files 
 (Ctrl+Alt+G) shows `git` status and diffs for that folder and lets you commit. Both run as the same user as the terminals, so
 they add no access that a terminal does not already have. They refuse `/proc`, `/sys` and `/dev`.
 
+Both also work on a pane that lives on **another machine**: the panel shows that machine's folder (its name is in the panel heading), and the
+commit runs there too, so the confirm box names the machine. The other machine needs `git` and a Linux or macOS system, and its `hc`
+must be current (LCARS tells you if not).
+
 ## Sending files and images
 
 - **Paste** a screenshot or copied image with Ctrl+V.
 - **Drop** a file onto a pane, or use **FILE** in its header.
 
 The file is stored beside the terminal and its path is typed in, so you can tell the agent "look at this". Files can be up to
-8 MB.
+8 MB. This works the same for a pane on another machine: the file is stored on that machine.
 
 ## Other machines
 

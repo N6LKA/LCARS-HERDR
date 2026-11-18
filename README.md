@@ -29,7 +29,7 @@ following its own instructions, then come back here.
 - **Images and documents**: paste a screenshot (Ctrl+V), drop a file on a pane, or use FILE in its header. The file is saved beside
   the terminal and its path is typed in for the agent.
 - **Files and Changes panels**: browse files and view them with syntax colours, see `git` changes and diffs for the pane's
-  folder, and commit.
+  folder, and commit, on this machine or on another machine you have added.
 - **Other machines**: add another computer over SSH and use its terminals in the same window.
 - **Voice dictation** into the focused pane, recognised in the browser on your own device.
 - **Copy and paste that works in a browser**, including text an agent selects for you.
