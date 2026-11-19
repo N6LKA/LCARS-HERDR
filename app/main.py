@@ -756,6 +756,9 @@ async def _ws_ok(ws: WebSocket) -> bool:
     return ok
 
 
+WS_PING_SECONDS = float(os.environ.get("LCARS_WS_PING", "20"))   # how often a quiet link sends a ping
+
+
 @app.websocket("/ws/events")
 async def ws_events(ws: WebSocket):
     """Snapshot of terminals, then every change the core reports."""
@@ -769,8 +772,19 @@ async def ws_events(ws: WebSocket):
         await ws.send_text(json.dumps({"type": "snapshot", **snap}))
 
         async def pump():
-            while True:
-                await ws.send_text(json.dumps({"type": "notification", **(await feed.next())}))
+            # A quiet moment still sends a small ping, so a proxy's idle timeout (nginx closes a silent link after 60 s) never cuts it.
+            nxt = asyncio.ensure_future(feed.next())
+            try:
+                while True:
+                    done, _ = await asyncio.wait({nxt}, timeout=WS_PING_SECONDS)
+                    if not done:
+                        await ws.send_text('{"type":"ping"}')
+                        continue
+                    msg = nxt.result()
+                    nxt = asyncio.ensure_future(feed.next())
+                    await ws.send_text(json.dumps({"type": "notification", **msg}))
+            finally:
+                nxt.cancel()
 
         async def watch_browser():
             while (await ws.receive())["type"] != "websocket.disconnect":
